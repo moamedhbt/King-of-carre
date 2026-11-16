@@ -13,3 +13,7 @@ npm-debug.log*
 # بيئة وأسرار
 .env
 .env.*
+
+# أدوات لقطات الشاشة (تطويرية)
+shots/
+public/__shots/

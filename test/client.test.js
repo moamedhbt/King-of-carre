@@ -136,10 +136,11 @@ test('عميل كامل: من الاسم إلى النهاية عبر الواج
   // 3) شاشة التوزيع
   await waitDom(domA, (d) => d.querySelectorAll('.tile-row').length === 4, 'allocate 4 tiles');
   const docA = domA.window.document;
-  assert.ok(text(docA).includes('المتبقي'), 'شريط المتبقي');
+  assert.ok(q(docA, '[data-remaining]'), 'عدّاد الطاقة المتبقية');
+  assert.ok(q(docA, '#well-orbs'), 'بئر الطاقة بالكرات');
   assert.ok(q(docA, '[data-timer]'), 'عدّاد الوقت');
   assert.ok(q(docA, '[data-action="lock"]').disabled, 'القفل معطّل قبل التوزيع الكامل');
-  assert.ok(text(docA).includes('وزّع كل الطاقة'), 'نص الزر عند النقص');
+  assert.ok(q(docA, '.lock-btn').textContent.includes('وزّع'), 'نص الزر عند النقص');
   assert.ok(q(docA, '[data-action="open-cards"]'), 'زر البطاقة الصغير');
 
   // توزيع عبر الضغط على الشريط ثم لوحة الأرقام
@@ -147,7 +148,7 @@ test('عميل كامل: من الاسم إلى النهاية عبر الواج
     const doc = dom.window.document;
     for (let i = 0; i < splits.length; i += 1) {
       /* eslint-disable no-await-in-loop */
-      click(q(doc, `.tile-meter[data-i="${i}"]`), dom.window);
+      click(q(doc, `.meter-set[data-i="${i}"]`), dom.window);
       await waitDom(dom, (d) => d.querySelector('.keypad'), 'keypad');
       const keys = Array.from(doc.querySelectorAll('.key'));
       const key = keys.find((k) => k.textContent.trim() === String(splits[i]));
@@ -160,7 +161,7 @@ test('عميل كامل: من الاسم إلى النهاية عبر الواج
   await waitDom(domA, (d) => !q(d, '[data-action="lock"]').disabled, 'lock enabled');
   assert.ok(q(docA, '[data-action="lock"]').textContent.includes('قفل'), 'نص القفل');
   click(q(docA, '[data-action="lock"]'), A);
-  await waitDom(domA, (d) => text(d).includes('بانتظار الآخرين'), 'waiting others');
+  await waitDom(domA, (d) => text(d).includes('بانتظار الآخرين') || text(d).includes('قفلوا'), 'waiting others');
   assert.ok(docA.querySelectorAll('.wait-row').length === 3, 'قائمة الانتظار بالأيقونات');
 
   // 4) الباقون يوزّعون
@@ -201,8 +202,9 @@ test('واجهة «كيف تلعب؟» تعرض مثال 3 لاعبين على �
   click(q(window.document, '[data-action="howto"]'), window);
   await waitDom(dom, (d) => d.querySelector('.modal'), 'modal');
   const t = window.document.querySelector('.modal').textContent;
-  assert.ok(t.includes('مثال: 3 لاعبين على مربع قيمته 5'));
-  assert.ok(t.includes('4'));
+  assert.ok(t.includes('٣ لاعبين') && t.includes('قيمتها ٥'), 'مثال ٣ لاعبين على أرض بقيمة ٥');
+  assert.ok(t.includes('٤'), 'أرقام الطاقة في المثال');
+  assert.ok(t.includes('الأقل نقاطاً'), 'قاعدة التعادل مشروحة');
   click(q(window.document, '[data-action="close-modal"]'), window);
   await waitDom(dom, (d) => !d.querySelector('.modal'), 'modal closed');
   window.close();

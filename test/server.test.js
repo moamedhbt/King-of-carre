@@ -130,8 +130,10 @@ test('مباراة كاملة 3 لاعبين: 5 جولات، سرّية، بطا
       if (m.type === 'state' && ['lobby', 'cards', 'allocate'].includes(m.phase)) {
         // السرّية: لا توزيع ولا بطاقات لأي لاعب آخر، ولا كشف قبل أوانه
         const others = (m.players || []).filter((p) => p.id !== c.playerId);
+        // المسموح علناً: النقاط والطاقة الإجمالية والتعويض وأثر اللص.
+        // الممنوع قبل الكشف: التوزيع، بطاقة الجولة، البطاقات المختارة/المستعملة.
         const bad = others.some((p) => 'alloc' in p || 'roundCard' in p || 'cards' in p
-          || 'usedCards' in p || 'energy' in p);
+          || 'usedCards' in p);
         if (bad || 'reveal' in m || 'allocs' in m || 'perPlayer' in m) {
           secretLeak.push({ player: c.name, phase: m.phase });
         }
