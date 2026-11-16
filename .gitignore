@@ -1,0 +1,15 @@
+# تبعيات
+node_modules/
+
+# بيانات وقت التشغيل (سجل المباريات المحلي)
+logs/
+*.jsonl
+
+# ملفات النظام
+.DS_Store
+Thumbs.db
+npm-debug.log*
+
+# بيئة
+.env
+.env.*
