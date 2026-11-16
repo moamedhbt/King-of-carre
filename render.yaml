@@ -1,0 +1,16 @@
+# Render Blueprint — نشر بضغطة واحدة من لوحة Render (اختياري)
+services:
+  - type: web
+    name: king-of-carre
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test test/engine.test.js test/server.test.js test/client.test.js"
+    "test": "node --test test/engine.test.js test/server.test.js test/client.test.js",
+    "health": "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>r.text()).then(console.log)\""
   },
   "dependencies": {
     "ws": "^8.18.0"
@@ -14,5 +15,8 @@
   "devDependencies": {
     "jsdom": "^25.0.1"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
 }
