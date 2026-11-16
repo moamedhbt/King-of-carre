@@ -2,14 +2,14 @@
 node_modules/
 
 # بيانات وقت التشغيل (سجل المباريات المحلي)
-logs/
-*.jsonl
+logs/*.jsonl
+!logs/.gitkeep
 
 # ملفات النظام
 .DS_Store
 Thumbs.db
 npm-debug.log*
 
-# بيئة
+# بيئة وأسرار
 .env
 .env.*
