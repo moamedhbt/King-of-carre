@@ -44,7 +44,7 @@ const cards = [
 ];
 const me = { id: 'p1', name: 'أمين', seat: 0, color: '#38E1FF', shape: '●', isHost: true, energy: 10, alloc: [3, 0, 4, 3], locked: false, bonus: 0, thiefPenalty: 0, cards, usedCards: [], roundCard: null, canActivate: true, cardsConfirmed: true, revenge: false };
 
-const tiles4 = [1, 3, 4, 5].map((v, i) => ({ index: i, value: v, golden: v === 5 }));
+const tiles4 = [1, 3, 4, 5].map((v, i) => ({ index: i, value: v, golden: false }));
 const tiles6 = [1, 2, 3, 4, 5, 6].map((v, i) => ({ index: i, value: v, golden: v === 6 }));
 
 const base = { type: 'state', code: 'KXRT', phase: 'allocate', round: 2, rounds: 5, minPlayers: 3, maxPlayers: 5,
@@ -56,6 +56,10 @@ const views = {
     tiles: tiles6, me: { ...me, energy: 14, alloc: [0, 0, 0, 0, 0, 0] } },
   map6filled: { ...base, round: 1, players: [...players, { id: 'p5', name: 'هدى', seat: 4, color: '#8B5CF6', shape: '★', score: 3, energy: 14, bonus: 0, isBot: false, connected: true, locked: false }],
     tiles: tiles6, me: { ...me, energy: 14, alloc: [4, 0, 3, 0, 3, 4] } },
+  goldenMap: { ...base, round: 3, event: 'ذهبي', eventInfo: { id: 'ذهبي', desc: 'قيمة أعلى أرض تتضاعف' }, tiles: tiles6, players,
+    me: { ...me, energy: 10, alloc: [2, 2, 0, 0, 6, 0] } },
+  markMap: { ...base, round: 2, players, tiles: tiles4,
+    me: { ...me, energy: 10, alloc: [3, 0, 4, 3], roundCard: { card: 'trap', target: { tile: 2 } }, usedCards: ['trap'] } },
   endMap: { ...base, phase: 'end', round: 5, deadline: 0, players,
     end: {
       winners: ['p1'],

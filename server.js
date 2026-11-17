@@ -400,9 +400,10 @@ function startRound(room, roundNo) {
   room.reveal = null;
   room.betweenInfo = null;
   room.endInfo = null;
-  room.tiles = G.drawTiles(room.players.length, Math.random);
   room.event = G.drawEvent(roundNo, room.prevEvent, Math.random);
   room.prevEvent = room.event;
+  // التضاعف لا يحدث إلا في جولة «ذهبي»: الأرض العليا تتضاعف قيمتها هناك فقط.
+  room.tiles = G.drawTiles(room.players.length, Math.random, room.event);
   const base = G.baseEnergyForEvent(room.event);
   const bonusTo = roundNo > 1 ? room.pendingBonus : null;
 

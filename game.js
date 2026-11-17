@@ -101,12 +101,16 @@ function pickOne(rng, arr) {
 /* ------------------------------------------------------------------ */
 
 // قيم المربعات: بلا تكرار من {1..6}، مرتّبة تصاعدياً (الأصغر أولاً = يمين الشاشة)
-function drawTiles(playerCount, rng = defaultRng) {
+// الأرض العليا تُضاعف فقط في جولة «ذهبي». في غيرها لكل أرض قيمتها كما هي.
+function drawTiles(playerCount, rng = defaultRng, event = EVENTS.NORMAL) {
   const count = playerCount + 1;
   const pool = [1, 2, 3, 4, 5, 6];
   const values = shuffle(rng, pool).slice(0, count).sort((a, b) => a - b);
   const maxValue = Math.max(...values);
-  return values.map((value) => ({ value, baseValue: value, golden: value === maxValue }));
+  const gold = event === EVENTS.GOLDEN;
+  return values.map((value) => ({
+    value, baseValue: value, golden: gold && value === maxValue,
+  }));
 }
 
 // الجولة الأولى عادية دائماً، ولا يتكرر حدث خاص مرتين متتاليتين

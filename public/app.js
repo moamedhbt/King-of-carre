@@ -13,6 +13,7 @@ const toastRoot = document.getElementById('toast-root');
 
 const LS = { identity: 'eb_identity', mute: 'eb_mute', tutorial: 'eb_tutorial' };
 const EMOJIS = ['😂', '🔥', '😱', '🤡'];
+const HELM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 13a8 8 0 0 1 16 0v3.2a2.8 2.8 0 0 1-2.8 2.8H6.8A2.8 2.8 0 0 1 4 16.2V13z"/><path d="M11.2 5.2v7M4.6 13.6h14.8" stroke-linecap="round"/></svg>';
 const GIFT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3.5" y="9.5" width="17" height="4.5" rx="1.2"/><path d="M5 14v6.5h14V14M12 9.5v11"/><path d="M12 9.5S10.6 4 8.3 4a2.3 2.3 0 0 0 0 5.5M12 9.5S13.4 4 15.7 4a2.3 2.3 0 0 1 0 5.5"/></svg>';
 const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.6"/><path d="M8.4 10.5V8a3.6 3.6 0 0 1 7.2 0v2.5"/></svg>';
 const WAIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3.5h10M7 20.5h10"/><path d="M8.5 3.5c0 4 3.5 5.4 3.5 8.5s-3.5 4.5-3.5 8.5M15.5 3.5c0 4-3.5 5.4-3.5 8.5s3.5 4.5 3.5 8.5"/></svg>';
@@ -780,14 +781,18 @@ const coinsHtml = (n, cls = '') => Array.from({ length: n }, (_, k) => (
   `<i class="coin ${cls}" style="--i:${k}"></i>`
 )).join('');
 
+// النقاط التي تأخذها فعلاً إن احتللت هذه الأرض (التضاعف محسوب)
+const pointsOf = (t) => (Number(t.value) || 0) * (t.golden ? 2 : 1);
+
 function plotHtml(t, i, counts, total) {
   const terr = territoryFor(i, total);
   const placed = counts[i] || 0;
+  const pts = pointsOf(t);
   return `<button class="plot ${t.golden ? 'golden' : ''} ${placed ? 'has' : ''}"
-      data-plot="${i}" data-action="plot" aria-label="${esc(terr.name)} — قيمته ${t.value}">
+      data-plot="${i}" data-action="plot" aria-label="${esc(terr.name)} — ${pts} نقطة">
     <span class="plot-top">
       <span class="plot-name">${esc(terr.name)}</span>
-      <span class="plot-val num">${t.value}${t.golden ? '<small>×2</small>' : ''}</span>
+      <span class="plot-val num"><b>${pts}</b><small>نقطة</small>${t.golden ? '<i class="x2">×2</i>' : ''}</span>
     </span>
     <span class="plot-art">${TERR_SVG[terr.kind](t.golden ? 1 : 0)}</span>
     <span class="plot-foot">
@@ -801,18 +806,24 @@ function plotHtml(t, i, counts, total) {
 
 function handHtml(v) {
   const me = v.me;
-  const cards = me.roundCard ? [] : (me.cards || []);
+  const cards = me.cards || [];
   const armed = S.armedCard;
   if (!cards.length) return '';
+  const spentThisRound = me.roundCard ? me.roundCard.card : null;
   return `<div class="hand" id="hand">
     ${cards.map((c) => {
     const used = (me.usedCards || []).includes(c.id);
     const isArmed = armed === c.id;
-    return `<button class="hand-card ${used ? 'used' : ''} ${isArmed ? 'armed' : ''}"
-        data-action="arm-card" data-id="${c.id}" ${used || me.locked ? 'disabled' : ''}>
+    const spent = spentThisRound === c.id;
+    const need = c.id === 'thief' ? 'اختر قائداً'
+      : c.id === 'sniper' ? 'أرض ثم قائد' : 'اختر أرضاً';
+    const badge = used ? 'استُعملت' : spent ? 'نُفِّذت' : isArmed ? need : '';
+    return `<button class="hand-card ${used || spent ? 'used' : ''} ${isArmed ? 'armed' : ''}"
+        data-action="arm-card" data-id="${c.id}" ${used || spent || me.locked ? 'disabled' : ''}>
+        <span class="hc-rib"></span>
         <span class="hc-ic">${cardIcon(c.id)}</span>
         <span class="hc-nm">${esc(c.name)}</span>
-        ${used ? '<span class="hc-used">استُعملت</span>' : isArmed ? '<span class="hc-armed">اختر هدفاً</span>' : ''}
+        ${badge ? `<span class="hc-badge ${isArmed ? 'on' : ''}">${badge}</span>` : ''}
       </button>`;
   }).join('')}
   </div>`;
@@ -831,7 +842,9 @@ function buildAllocate(v) {
         ${timerHtml()}
         ${mutedBtn()}
       </div>
-      <div class="map-tip" id="map-tip"><span>الأعلى على الأرض يأخذها</span></div>
+      ${v.event && v.eventInfo && v.eventInfo.id !== 'عادي'
+    ? `<div class="event-chip ${v.eventInfo.id === 'ذهبي' ? 'gold' : v.eventInfo.id === 'مقلوب' ? 'rev' : 'feast'}">${esc(v.event)}</div>` : ''}
+      <div class="map-tip" id="map-tip"><span>الأعلى قوةً يحتلها</span></div>
       <div class="map-wrap" id="map-wrap">
         <div class="map" id="map">
           ${v.tiles.map((t, i) => plotHtml(t, i, draft, v.tiles.length)).join('')}
@@ -840,12 +853,13 @@ function buildAllocate(v) {
       <div id="hand-slot">${handHtml(v)}</div>
       <div class="dock">
         <div class="pouch" id="pouch" data-action="pouch">
+          <span class="pouch-helm">${HELM_SVG}</span>
           <span class="pouch-coins">${coinsHtml(me.energy)}</span>
-          <span class="pouch-num"><b class="num" data-remaining>${remaining}</b><small>عملة</small></span>
+          <span class="pouch-num"><b class="num" data-remaining>${remaining}</b><small>قوة</small></span>
         </div>
-        <button class="dock-btn" data-action="autofill" ${remaining === 0 ? 'disabled' : ''}>املأ الباقي</button>
+        <button class="dock-btn" data-action="autofill" ${remaining === 0 ? 'disabled' : ''}>وزّع الباقي</button>
         <button class="lock-btn ${remaining === 0 ? 'ready' : ''}" data-action="lock"
-          ${remaining === 0 ? '' : 'disabled'}>${remaining === 0 ? 'اقفل ✔' : 'قفل'}</button>
+          ${remaining === 0 ? '' : 'disabled'}>${remaining === 0 ? 'أرسل ✔' : 'أرسل'}</button>
       </div>
       <div class="waiting-list" id="alloc-wait" style="display:none"></div>
     </div>`;
@@ -949,7 +963,7 @@ function patchAllocate(v) {
   if (lock) {
     lock.disabled = remaining !== 0;
     lock.classList.toggle('ready', remaining === 0);
-    lock.textContent = remaining === 0 ? 'اقفل ✔' : 'قفل';
+    lock.textContent = remaining === 0 ? 'أرسل ✔' : 'أرسل';
   }
 
   // الأراضي: العملات فقط (بلا إعادة بناء كي لا تُفقد الحركة)
@@ -990,15 +1004,31 @@ function patchAllocate(v) {
   const tip = $('#map-tip');
   if (tip) {
     tip.classList.toggle('show', !!S.armedCard);
-    const txt = S.armedCard === 'thief' ? 'اختر خصماً من الشريط العلوي'
-      : S.armedCard === 'sniper' ? (S.sniperPlot == null ? 'اختر أرضاً ثم خصماً' : 'اختر الخصم المستهدف')
-        : S.armedCard ? 'اختر أرضاً' : 'الأعلى على الأرض يأخذها';
+    const txt = S.armedCard === 'thief' ? 'اختر قائداً من الشريط العلوي'
+      : S.armedCard === 'sniper' ? (S.sniperPlot == null ? 'اختر أرضاً ثم قائداً' : 'اختر القائد المستهدف')
+        : S.armedCard ? 'اختر أرضاً لتُنفّذ الأمر' : 'الأعلى قوةً يحتلها';
     const inner = tip.querySelector('span') || tip;
     if (inner.textContent !== txt) inner.textContent = txt;
   }
+  // علامة الأمر المنفَّذ: أين ذهبت بطاقتي (خاص بي)
+  $$('.card-mark', screenEl).forEach((el) => el.remove());
+  const rc = me.roundCard;
+  if (rc && rc.target && Number.isInteger(rc.target.tile)) {
+    const plot = $(`.plot[data-plot="${rc.target.tile}"]`);
+    if (plot) {
+      const mark = document.createElement('span');
+      mark.className = 'card-mark';
+      mark.dataset.card = rc.card;
+      mark.innerHTML = `${cardIcon(rc.card)}<b>${esc(cardName(rc.card))}</b>`;
+      plot.appendChild(mark);
+    }
+  }
+
   $$('.plot', screenEl).forEach((p) => {
-    p.classList.toggle('armable', !!S.armedCard && S.armedCard !== 'thief');
-    p.classList.toggle('armed-target', S.armedCard === 'sniper' && Number(p.dataset.plot) === S.sniperPlot);
+    const armed = S.armedCard;
+    p.classList.toggle('armable', !!armed && armed !== 'thief');
+    p.classList.toggle('can-target', !!armed && armed !== 'thief');
+    p.classList.toggle('armed-target', armed === 'sniper' && Number(p.dataset.plot) === S.sniperPlot);
   });
   $$('.avatar', screenEl).forEach((a) => {
     a.classList.toggle('targetable', S.armedCard === 'thief' || (S.armedCard === 'sniper' && S.sniperPlot != null));
@@ -1212,7 +1242,7 @@ function renderReveal(v) {
         data-reveal-plot="${idx}" style="--wc:${t.winnerId ? colorOf(byId(t.winnerId)) : 'transparent'}">
       <span class="plot-top">
         <span class="plot-name">${esc(terr.name)}</span>
-        <span class="plot-val num">${t.value}${t.golden ? '<small>×2</small>' : ''}</span>
+        <span class="plot-val num"><b>${t.value}</b><small>نقطة</small>${t.golden ? '<i class="x2">×2</i>' : ''}</span>
       </span>
       <span class="plot-art">${TERR_SVG[terr.kind](t.golden ? 1 : 0)}</span>
       <span class="stacks">${stacks}</span>

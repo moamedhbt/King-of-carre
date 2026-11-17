@@ -10,7 +10,7 @@ function board(values, golden = false) {
   return values.map((v) => ({ value: v, baseValue: v, golden: golden && v === Math.max(...values) }));
 }
 
-test('سحب المربعات: عدد = لاعبين + 1، بلا تكرار، تصاعدي، الذهبي على الأعلى', () => {
+test('سحب المربعات: عدد = لاعبين + 1، بلا تكرار، تصاعدي، والتضاعف في «ذهبي» فقط', () => {
   for (let n = 3; n <= 5; n += 1) {
     for (let k = 0; k < 50; k += 1) {
       const rng = G.mulberry32(k + n * 1000);
@@ -20,8 +20,12 @@ test('سحب المربعات: عدد = لاعبين + 1، بلا تكرار، �
       assert.strictEqual(new Set(vals).size, vals.length);
       assert.deepStrictEqual(vals, vals.slice().sort((a, b) => a - b));
       vals.forEach((v) => assert.ok(v >= 1 && v <= 6));
-      const max = Math.max(...vals);
-      tiles.forEach((t) => assert.strictEqual(t.golden, t.value === max));
+      // في الجولات العادية لا تضاعف لأي أرض
+      assert.ok(tiles.every((t) => t.golden === false), 'لا ذهبي في الجولة العادية');
+      // في جولة «ذهبي» تتضاعف الأرض العليا وحدها
+      const gold = G.drawTiles(n, G.mulberry32(k + n * 1000), G.EVENTS.GOLDEN);
+      const max = Math.max(...gold.map((t) => t.value));
+      gold.forEach((t) => assert.strictEqual(t.golden, t.value === max, 'الذهبي على الأعلى فقط'));
     }
   }
 });
