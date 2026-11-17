@@ -1148,3 +1148,75 @@ input{font-family:inherit;font-size:16px}
   min-height:44px;border-radius:13px;font-size:13px;font-weight:900;color:#C9D6EE;
   background:rgba(30,36,34,.9);border:1px solid rgba(196,164,101,.3);
 }
+
+/* ============================== */
+/* لحظات الأوامر: ضربة، سهم، تصدّع  */
+/* ============================== */
+.card-fx{
+  position:absolute;inset:0;z-index:6;display:grid;place-items:center;pointer-events:none;
+  color:#FFD98A;opacity:0;
+}
+.card-fx svg{
+  width:44%;height:44%;max-width:64px;
+  filter:drop-shadow(0 4px 14px rgba(0,0,0,.7));
+}
+.card-fx.fx-snipe svg{color:#FF8FA3}
+.card-fx.fx-double svg{color:#BEF264}
+.card-fx.fx-trap svg{color:#E0A63C}
+.card-fx.fx-shield svg{color:#8FD8EA}
+
+.card-fx.fx-snipe{animation:snipeHit 1.5s var(--ease) forwards}
+.card-fx.fx-shield{animation:shieldCrack 1.4s var(--ease) forwards}
+.card-fx.fx-double{animation:doublePulse 1.4s var(--ease) forwards}
+.card-fx.fx-trap{animation:trapSnap 1.3s var(--ease) forwards}
+
+@keyframes snipeHit{
+  0%{opacity:0;transform:scale(1.9) rotate(-14deg)}
+  22%{opacity:1;transform:scale(1) rotate(0)}
+  70%{opacity:1;transform:scale(1)}
+  100%{opacity:0;transform:scale(.94)}
+}
+@keyframes shieldCrack{
+  0%{opacity:0;transform:scale(.6)}
+  25%{opacity:1;transform:scale(1.06)}
+  40%{transform:scale(.98) rotate(-2deg)}
+  50%{transform:scale(1.02) rotate(2deg)}
+  100%{opacity:0;transform:scale(1.1)}
+}
+@keyframes doublePulse{
+  0%{opacity:0;transform:scale(.4)}
+  30%{opacity:1;transform:scale(1.12)}
+  60%{opacity:.9;transform:scale(1)}
+  100%{opacity:0;transform:scale(1.24)}
+}
+@keyframes trapSnap{
+  0%{opacity:0;transform:scale(1.6) rotate(0)}
+  35%{opacity:1;transform:scale(.86) rotate(-6deg)}
+  55%{transform:scale(1) rotate(0)}
+  100%{opacity:0;transform:scale(.9)}
+}
+
+/* ضربة القائد عند الاختيار */
+.target-card.struck{
+  animation:struckShake 380ms var(--ease) both;
+  border-color:#FFD98A;
+  box-shadow:0 0 0 2px rgba(255,217,138,.5), 0 12px 30px rgba(255,198,92,.3);
+}
+@keyframes struckShake{
+  0%{transform:none}
+  20%{transform:translateX(-5px) rotate(-1deg)}
+  40%{transform:translateX(4px) rotate(.8deg)}
+  60%{transform:translateX(-2px)}
+  80%{transform:translateX(1px)}
+  100%{transform:none}
+}
+.strike-line{
+  position:absolute;inset:0;pointer-events:none;border-radius:16px;
+  background:linear-gradient(115deg, transparent 42%, rgba(255,244,214,.95) 50%, transparent 58%);
+  animation:strikeSlash 380ms var(--ease) forwards;
+}
+@keyframes strikeSlash{
+  0%{opacity:0;transform:translateX(-60%) scaleX(.4)}
+  45%{opacity:1;transform:translateX(0) scaleX(1)}
+  100%{opacity:0;transform:translateX(40%) scaleX(1.1)}
+}

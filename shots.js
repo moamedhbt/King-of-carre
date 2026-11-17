@@ -77,6 +77,13 @@ const views = {
       h2h: { p1: [{ name: 'سارة', w: 3, l: 2, d: 0 }, { name: 'علي', w: 4, l: 1, d: 1 }] },
       revengeVotes: [],
     } },
+  revealFx: { ...base, phase: 'reveal', round: 4, deadline: Date.now() + 9000, players, tiles: tiles4, me: { id: 'p1' },
+    reveal: { round: 4, event: 'عادي', tiles: [
+      { index: 0, value: 1, golden: false, energies: { p1: 3, p2: 2 }, winnerId: null, decidedBy: 'sniper', collision: true, doubled: false, sniper: { by: 'p2', victim: 'p1' }, trapOwners: [], trappedIds: [] },
+      { index: 1, value: 4, golden: false, energies: { p1: 4, p3: 4 }, winnerId: 'p3', decidedBy: 'shield', collision: true, doubled: false, sniper: null, trapOwners: [], trappedIds: [] },
+      { index: 2, value: 3, golden: false, energies: { p1: 6, p2: 4, p4: 3 }, winnerId: 'p1', decidedBy: 'highest', collision: false, doubled: true, sniper: null, trapOwners: ['p3'], trappedIds: ['p1'] },
+      { index: 3, value: 2, golden: false, energies: { p2: 5, p3: 5 }, winnerId: null, decidedBy: 'annulled', collision: true, doubled: false, sniper: null, trapOwners: [], trappedIds: [] },
+    ], perPlayer: { p1: { scoreBefore: 12, scoreAfter: 18, gain: 6, trapLoss: 3, tilesWon: [2], collisions: 1 }, p2: { scoreBefore: 9, scoreAfter: 9, gain: 0, trapLoss: 0, tilesWon: [], collisions: 2 }, p3: { scoreBefore: 7, scoreAfter: 11, gain: 4, trapLoss: 0, tilesWon: [1], collisions: 2 }, p4: { scoreBefore: 4, scoreAfter: 4, gain: 0, trapLoss: 0, tilesWon: [], collisions: 1 } }, allocs: {} } },
   revealMap: { ...base, phase: 'reveal', round: 3, deadline: Date.now() + 9000, players, tiles: tiles4, me: { id: 'p1' },
     reveal: { round: 3, event: 'ذهبي', tiles: [
       { index: 0, value: 1, golden: false, energies: { p1: 2, p2: 3, p4: 1 }, winnerId: 'p2', decidedBy: 'highest', collision: false, doubled: false },

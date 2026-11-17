@@ -1248,9 +1248,16 @@ function openTargetSheet(v, cardId, tile) {
     const btn = ev.target.closest('[data-target]');
     if (btn) {
       SFX.clank();
-      vibrate(16);
-      sendActivate(cardId, tile == null ? { playerId: btn.dataset.target } : { tile, playerId: btn.dataset.target });
-      close();
+      vibrate([16, 30, 16]);
+      btn.classList.add('struck');
+      const mark = document.createElement('span');
+      mark.className = 'strike-line';
+      btn.appendChild(mark);
+      const chosen = btn.dataset.target;
+      setTimeout(() => {
+        sendActivate(cardId, tile == null ? { playerId: chosen } : { tile, playerId: chosen });
+        close();
+      }, 380);
       return;
     }
     if (ev.target.closest('[data-cancel]') || ev.target === root) close();
@@ -1384,7 +1391,7 @@ function renderReveal(v) {
         SFX.clash();
         vibrate([26, 46, 26]);
       }
-      if (t.sniper) SFX.steal();
+      cardMoments(el, t);
       if (order === 0) {
         const skip = $('#skip-btn');
         if (skip) skip.style.display = '';
@@ -1397,6 +1404,28 @@ function renderReveal(v) {
       }
     }, order * step + 80);
     S.revealTimers.push(tm);
+  });
+}
+
+/* أثر كل أمر على الأرض لحظة الكشف (بصري فقط) */
+function cardMoments(el, t) {
+  const fx = [];
+  if (t.sniper) fx.push({ cls: 'fx-snipe', icon: CARD_SVG.sniper, fmt: 'سهم قناص' });
+  if (t.decidedBy === 'shield') fx.push({ cls: 'fx-shield', icon: CARD_SVG.shield, fmt: 'درع' });
+  if (t.doubled) fx.push({ cls: 'fx-double', icon: CARD_SVG.double, fmt: 'مضاعف' });
+  if ((t.trapOwners || []).length && (t.trappedIds || []).length) fx.push({ cls: 'fx-trap', icon: CARD_SVG.trap, fmt: 'فخ' });
+  fx.forEach((f, k) => {
+    const d = document.createElement('span');
+    d.className = `card-fx ${f.cls}`;
+    d.setAttribute('aria-label', f.fmt);
+    d.innerHTML = f.icon;
+    d.style.animationDelay = `${k * 260}ms`;
+    el.appendChild(d);
+    setTimeout(() => d.remove(), 2200);
+    if (f.cls === 'fx-snipe') SFX.steal();
+    if (f.cls === 'fx-double') SFX.orb(6);
+    if (f.cls === 'fx-shield') SFX.clank();
+    if (f.cls === 'fx-trap') SFX.clash();
   });
 }
 

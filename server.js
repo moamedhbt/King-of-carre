@@ -283,6 +283,7 @@ function createRoom() {
     endInfo: null,
     pendingBonus: null,
     readyIds: [],
+    cardStats: {},
     briefRound: 0,
     revengeVotes: [],
     h2h: {},
@@ -369,11 +370,18 @@ function startMatch(room) {
   broadcast(room);
 }
 
+function bumpCard(room, id, key) {
+  if (!room.cardStats) room.cardStats = {};
+  if (!room.cardStats[id]) room.cardStats[id] = { chosen: 0, activated: 0, hit: 0 };
+  room.cardStats[id][key] += 1;
+}
+
 function finishCards(room) {
   room.players.forEach((p) => {
     if (p.cardsChosen.length !== 3) {
       p.cardsChosen = G.shuffle(Math.random, G.CARD_ORDER).slice(0, 3);
     }
+    p.cardsChosen.forEach((id) => bumpCard(room, id, 'chosen'));
   });
   startRound(room, 1);
 }
@@ -526,6 +534,7 @@ function applyCard(room, player, payload) {
   if (result.error) return result;
   player.roundCard = { card: payload.card, target: result.target };
   player.usedCards.push(payload.card);
+  bumpCard(room, payload.card, 'activated');
   if (payload.card === 'thief') {
     const victim = room.players.find((p) => p.id === result.target.playerId);
     victim.energy = Math.max(0, victim.energy - G.CONFIG.THIEF_COST);
@@ -672,6 +681,16 @@ function resolveNow(room) {
     energyUsed[p.id] = (p.alloc || []).slice();
   });
 
+  // أثر البطاقة: هل تحقق شرطها فعلاً على اللوحة؟ (قياس بلا أسماء — القسم 9)
+  const hit = { shield: false, sniper: false, double: false, trap: false, thief: false };
+  resolution.tiles.forEach((t) => {
+    if (t.decidedBy === 'shield') hit.shield = true;
+    if (t.sniper) hit.sniper = true;
+    if (t.doubled) hit.double = true;
+    if ((t.trapOwners || []).length && (t.trappedIds || []).length) hit.trap = true;
+  });
+  room.players.forEach((p) => { if ((p.thiefPenalty || 0) > 0) hit.thief = true; });
+
   room.reveal = {
     round: room.round,
     event: room.event,
@@ -693,6 +712,8 @@ function resolveNow(room) {
     thiefHits: room.players.reduce((acc, p) => { acc[p.id] = p.thiefPenalty; return acc; }, {}),
     summary,
   };
+
+  Object.keys(hit).forEach((id) => { if (hit[id]) bumpCard(room, id, 'hit'); });
 
   room.phase = 'reveal';
   const revealMs = Math.min(
@@ -758,6 +779,39 @@ function updateH2H(room) {
   }
 }
 
+function cardStatsSummary() {
+  const total = {};
+  G.CARD_ORDER.forEach((id) => { total[id] = { chosen: 0, activated: 0, hit: 0 }; });
+  let matches = 0;
+  try {
+    if (fs.existsSync(MATCH_LOG)) {
+      const lines = fs.readFileSync(MATCH_LOG, 'utf8').split('\n').filter(Boolean);
+      matches = lines.length;
+      lines.forEach((line) => {
+        let row;
+        try { row = JSON.parse(line); } catch { return; }
+        Object.entries(row.cardStats || {}).forEach(([id, st]) => {
+          if (!total[id]) total[id] = { chosen: 0, activated: 0, hit: 0 };
+          total[id].chosen += st.chosen || 0;
+          total[id].activated += st.activated || 0;
+          total[id].hit += st.hit || 0;
+        });
+      });
+    }
+  } catch { /* لا سجل بعد */ }
+  const round1 = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : null);
+  return {
+    matches,
+    note: 'مجاميع بلا أسماء. hitRatio = نسبة الاستعمالات التي تحقّق فيها شرط البطاقة.',
+    cards: Object.fromEntries(Object.entries(total).map(([id, st]) => [id, {
+      ...st,
+      pickRate: round1(st.chosen, matches ? matches * 3 : 0),
+      useRate: round1(st.activated, st.chosen),
+      hitRatio: round1(st.hit, st.activated),
+    }])),
+  };
+}
+
 function logMatch(room) {
   try {
     fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -772,6 +826,7 @@ function logMatch(room) {
         used: p.usedCards.slice().sort(),
         bot: p.isBot,
       })),
+      cardStats: room.cardStats || {},
     };
     fs.appendFileSync(MATCH_LOG, `${JSON.stringify(row)}\n`);
   } catch (e) {
@@ -1184,6 +1239,13 @@ const server = http.createServer(async (req, res) => {
       clearTimeout(timer);
       entry.session.waiter = null;
     });
+    return;
+  }
+
+  if (url.pathname === '/stats') {
+    // قياس معدّل نجاح البطاقات (القسم 9): مجاميع فقط، بلا أسماء ولا رموز غرف.
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(cardStatsSummary()));
     return;
   }
 
