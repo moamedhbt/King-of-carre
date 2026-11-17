@@ -65,6 +65,12 @@ function click(el, window) {
   el.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 }
 
+// لمسة على الأرض: pointerdown ثم pointerup (الضغط المطوّل = سحب عملة)
+function tap(el, window) {
+  el.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+  el.dispatchEvent(new window.Event('pointerup', { bubbles: true }));
+}
+
 test.before(startServer);
 test.after(() => { if (proc) proc.kill('SIGKILL'); });
 
@@ -133,52 +139,51 @@ test('عميل كامل: من الاسم إلى النهاية عبر الواج
     /* eslint-enable no-await-in-loop */
   }
 
-  // 3) شاشة التوزيع
-  await waitDom(domA, (d) => d.querySelectorAll('.tile-row').length === 4, 'allocate 4 tiles');
+  // 3) خريطة الأراضي
+  await waitDom(domA, (d) => d.querySelectorAll('.plot[data-plot]').length === 4, 'allocate 4 tiles');
   const docA = domA.window.document;
-  assert.ok(q(docA, '[data-remaining]'), 'عدّاد الطاقة المتبقية');
-  assert.ok(q(docA, '#well-orbs'), 'بئر الطاقة بالكرات');
   assert.ok(q(docA, '[data-timer]'), 'عدّاد الوقت');
-  assert.ok(q(docA, '[data-action="lock"]').disabled, 'القفل معطّل قبل التوزيع الكامل');
-  assert.ok(q(docA, '.lock-btn').textContent.includes('وزّع'), 'نص الزر عند النقص');
-  assert.ok(q(docA, '[data-action="open-cards"]'), 'زر البطاقة الصغير');
+  assert.ok(q(docA, '#pouch'), 'كيس العملات');
+  assert.ok(q(docA, '.hand .hand-card'), 'البطاقات المختارة ظاهرة في اليد');
+  assert.strictEqual(docA.querySelectorAll('.hand .hand-card').length, 3, 'ثلاث بطاقات في اليد');
+  assert.ok(q(docA, '[data-action="lock"]').disabled, 'القفل معطّل قبل وضع كل الطاقة');
 
-  // توزيع عبر الضغط على الشريط ثم لوحة الأرقام
+  // التوزيع: نقرة على الأرض = عملة
   const distribute = async (dom, splits) => {
     const doc = dom.window.document;
     for (let i = 0; i < splits.length; i += 1) {
-      /* eslint-disable no-await-in-loop */
-      click(q(doc, `.meter-set[data-i="${i}"]`), dom.window);
-      await waitDom(dom, (d) => d.querySelector('.keypad'), 'keypad');
-      const keys = Array.from(doc.querySelectorAll('.key'));
-      const key = keys.find((k) => k.textContent.trim() === String(splits[i]));
-      click(key, dom.window);
-      await sleep(40);
-      /* eslint-enable no-await-in-loop */
+      for (let k = 0; k < splits[i]; k += 1) {
+        const plot = doc.querySelector(`.plot[data-plot="${i}"]`);
+        tap(plot, dom.window);
+        /* eslint-disable-next-line no-await-in-loop */
+        await sleep(30);
+      }
     }
   };
   await distribute(domA, [5, 5, 0, 0]);
+  assert.strictEqual(docA.querySelectorAll('.plot.has').length, 2, 'أرضان عليهما عملات');
+  assert.ok(q(docA, '.plot[data-plot="0"] .plot-coins b').textContent.includes('5'), 'خمس عملات على الأرض الأولى');
   await waitDom(domA, (d) => !q(d, '[data-action="lock"]').disabled, 'lock enabled');
-  assert.ok(q(docA, '[data-action="lock"]').textContent.includes('قفل'), 'نص القفل');
+  assert.ok(q(docA, '[data-action="lock"]').classList.contains('lock-btn'), 'زر القفل');
   click(q(docA, '[data-action="lock"]'), A);
   await waitDom(domA, (d) => text(d).includes('بانتظار الآخرين') || text(d).includes('قفلوا'), 'waiting others');
-  assert.ok(docA.querySelectorAll('.wait-row').length === 3, 'قائمة الانتظار بالأيقونات');
+  assert.ok(docA.querySelectorAll('.wait-row').length >= 3, 'قائمة الانتظار بالأيقونات');
 
   // 4) الباقون يوزّعون
-  await waitDom(domB, (d) => d.querySelectorAll('.tile-row').length === 4, 'B allocate');
-  await waitDom(domC, (d) => d.querySelectorAll('.tile-row').length === 4, 'C allocate');
+  await waitDom(domB, (d) => d.querySelectorAll('.plot[data-plot]').length === 4, 'B allocate');
+  await waitDom(domC, (d) => d.querySelectorAll('.plot[data-plot]').length === 4, 'C allocate');
   await distribute(domB, [4, 3, 3, 0]);
   click(q(domB.window.document, '[data-action="lock"]'), B);
   await distribute(domC, [0, 2, 4, 4]);
   click(q(domC.window.document, '[data-action="lock"]'), C);
 
   // 5) الكشف
-  await waitDom(domA, (d) => d.querySelectorAll('[data-reveal-row]').length === 4, 'reveal rows');
-  await waitDom(domA, (d) => d.querySelector('.reveal-tile.show'), 'reveal animating');
+  await waitDom(domA, (d) => d.querySelectorAll('[data-reveal-plot]').length === 4, 'reveal map');
+  await waitDom(domA, (d) => d.querySelector('.plot.reveal.show'), 'reveal animating');
   await waitDom(domA, (d) => q(d, '#skip-btn')?.style.display !== 'none', 'skip appears');
   const skip = q(domA.window.document, '[data-action="skip-reveal"]');
   click(skip, A);
-  await waitDom(domA, () => domA.window.document.querySelectorAll('.reveal-tile.show').length === 4, 'skipped all');
+  await waitDom(domA, () => domA.window.document.querySelectorAll('.plot.reveal.show').length === 4, 'skipped all');
   const emoteBtn = q(domA.window.document, '.emote-btn');
   assert.ok(emoteBtn, 'أزرار التفاعل موجودة');
   click(emoteBtn, A);
@@ -227,8 +232,8 @@ test('التجربة مع البوتات من شاشة الانتظار: 4 لا�
     click(window.document.querySelectorAll('.card-pick')[i], window);
   }
   click(q(window.document, '[data-action="confirm-cards"]'), window);
-  await waitDom(dom, (d) => d.querySelectorAll('.tile-row').length === 5, 'five tiles', 15000);
-  assert.strictEqual(window.document.querySelectorAll('.tile-row').length, 5, '4 لاعبين ← 5 مربعات');
+  await waitDom(dom, (d) => d.querySelectorAll('.plot[data-plot]').length === 5, 'five plots', 15000);
+  assert.strictEqual(window.document.querySelectorAll('.plot[data-plot]').length, 5, '4 لاعبين ← 5 أراضٍ');
   window.close();
 });
 

@@ -13,6 +13,16 @@ const toastRoot = document.getElementById('toast-root');
 
 const LS = { identity: 'eb_identity', mute: 'eb_mute', tutorial: 'eb_tutorial' };
 const EMOJIS = ['😂', '🔥', '😱', '🤡'];
+const GIFT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3.5" y="9.5" width="17" height="4.5" rx="1.2"/><path d="M5 14v6.5h14V14M12 9.5v11"/><path d="M12 9.5S10.6 4 8.3 4a2.3 2.3 0 0 0 0 5.5M12 9.5S13.4 4 15.7 4a2.3 2.3 0 0 1 0 5.5"/></svg>';
+const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.6"/><path d="M8.4 10.5V8a3.6 3.6 0 0 1 7.2 0v2.5"/></svg>';
+const WAIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3.5h10M7 20.5h10"/><path d="M8.5 3.5c0 4 3.5 5.4 3.5 8.5s-3.5 4.5-3.5 8.5M15.5 3.5c0 4-3.5 5.4-3.5 8.5s3.5 4.5 3.5 8.5"/></svg>';
+
+const EMOTE_SVG = {
+  '😂': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14c1.1 1.6 2.4 2.4 4 2.4s2.9-.8 4-2.4"/><path d="M9 9.5h.01M15 9.5h.01" stroke-linecap="round"/></svg>',
+  '🔥': '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c3.4 3.6 6 6.7 6 10.4A6 6 0 0 1 6 12.4C6 9.4 8 7 9.6 4.8c.6 1.6 1.2 2.4 2.4 3.2.5-1.8.6-3.6 0-6z"/></svg>',
+  '😱': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1.2" fill="currentColor"/><circle cx="15" cy="10" r="1.2" fill="currentColor"/><ellipse cx="12" cy="15.5" rx="2" ry="2.4"/></svg>',
+  '🤡': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M8.5 9.5 11 11M15.5 9.5 13 11"/><path d="M8 15c1.3 1 2.6 1.5 4 1.5s2.7-.5 4-1.5"/></svg>',
+};
 const COLOR_FALLBACK = ['#38E1FF', '#C084FC', '#BEF264', '#FBBF24', '#8B5CF6'];
 
 const Net = { mode: 'ws', wsFails: 0, sid: null, polling: false, connecting: null };
@@ -449,7 +459,7 @@ function handleMessage(msg) {
       if (msg.bonusTo) {
         const mine = S.view?.me && msg.bonusTo === S.view.me.id;
         setTimeout(() => toast(
-          mine ? '🎁 تعويض الأخير: +3 طاقة لك' : `🎁 ${msg.bonusName} أخذ تعويض +3`,
+          mine ? 'تعويض الأخير: +3 طاقة لك' : `${msg.bonusName} أخذ تعويض +3`,
           'good',
         ), 1500);
       }
@@ -513,13 +523,18 @@ function floatEmote(emoji, seat) {
   if (!domAlive()) return;
   const el = document.createElement('div');
   el.className = 'float-emote';
-  el.textContent = emoji;
+  el.innerHTML = EMOTE_SVG[emoji] || '';
   el.style.left = `${28 + ((seat ?? 0) * 13) + Math.random() * 14}%`;
   overlayRoot.appendChild(el);
   setTimeout(() => el.remove(), 2100);
 }
 
 /* --------------------------------------------------------------- الرسم */
+function clearRevealTimers() {
+  (S.revealTimers || []).forEach((t) => clearTimeout(t));
+  S.revealTimers = [];
+}
+
 function render() {
   if (!domAlive()) return;
   const v = S.view;
@@ -573,7 +588,7 @@ function avatarHtml(p, { me = false } = {}) {
       style="--c:${colorOf(p)}" title="${esc(p.name)}">
       <span class="sh">${esc(p.shape || '●')}</span>
       <span class="sc num">${score}</span>
-      <span class="lk">🔒</span>
+      <span class="lk">${LOCK_SVG}</span>
     </div>`;
 }
 
@@ -735,6 +750,11 @@ function renderCards(v) {
 }
 
 /* ------------------------------------------------------------- ٤) التوزيع */
+
+/* ============================================================ خريطة الأراضي
+   التجربة: أرض تُلمس، كيس عملات، ويد بطاقات ظاهرة. لا أزرار حساب ولا لوحات أرقام.
+   ============================================================ */
+
 function ensureDraft(v) {
   const me = v.me;
   if (!me) return [];
@@ -747,53 +767,61 @@ function ensureDraft(v) {
   S.draft = S.draft.map((x) => Math.max(0, Math.floor(Number(x) || 0)));
   let sum = S.draft.reduce((s, x) => s + x, 0);
   while (sum > me.energy) {
-    let idx = 0;
-    S.draft.forEach((x, i) => { if (x > S.draft[idx]) idx = i; });
-    if (S.draft[idx] <= 0) break;
-    S.draft[idx] -= 1;
+    let biggest = 0;
+    S.draft.forEach((x, i) => { if (x > S.draft[biggest]) biggest = i; });
+    if (S.draft[biggest] <= 0) break;
+    S.draft[biggest] -= 1;
     sum -= 1;
   }
   return S.draft;
 }
 
-function tileRowHtml(t, i, draftVal, territory) {
-  const isGolden = t.golden;
-  const army = Array.from({ length: draftVal }, (_, k) => `<i class="orb ${isGolden ? 'gold' : ''}" style="animation-delay:${k * 10}ms"></i>`).join('');
-  return `<div class="tile-row ${isGolden ? 'golden' : ''} ${draftVal > 0 ? 'has' : ''}" data-tile="${i}">
-    <div class="tile-top">
-      <div class="t-art">${TERR_SVG[territory.kind](isGolden ? 1 : 0)}</div>
-      <div class="t-meta">
-        <span class="t-name">${esc(territory.name)}</span>
-        <span class="t-val num"><b>${t.value}</b><small>${isGolden ? '×2' : ''}</small></span>
-      </div>
-      <button class="meter-set" data-action="set" data-i="${i}"
-        aria-label="اكتب رقم ${esc(territory.name)}">✎</button>
-      <span class="grow"></span>
-    </div>
-    <div class="tile-bottom">
-      <button class="step-btn minus" data-step="-1" data-i="${i}" aria-label="إنقاص" ${draftVal <= 0 ? 'disabled' : ''}>−</button>
-      <div class="tile-meter" data-action="add" data-i="${i}" role="button"
-           aria-label="أضف كرة إلى ${esc(territory.name)} (${draftVal})">
-        <span class="t-inline">
-          <span class="t-art">${TERR_SVG[territory.kind](isGolden ? 1 : 0)}</span>
-          <b class="num">${t.value}${isGolden ? '×2' : ''}</b>
-        </span>
-        <span class="cnt num ${draftVal === 0 ? 'zero' : ''}">${draftVal}</span>
-        <span class="army" data-val="${draftVal}">${army}</span>
-        ${draftVal === 0 ? '<span class="army-empty">كراتك هنا</span>' : ''}
-      </div>
-      <button class="step-btn" data-step="1" data-i="${i}" aria-label="زيادة">+</button>
-    </div>
+const coinsHtml = (n, cls = '') => Array.from({ length: n }, (_, k) => (
+  `<i class="coin ${cls}" style="--i:${k}"></i>`
+)).join('');
+
+function plotHtml(t, i, counts, total) {
+  const terr = territoryFor(i, total);
+  const placed = counts[i] || 0;
+  return `<button class="plot ${t.golden ? 'golden' : ''} ${placed ? 'has' : ''}"
+      data-plot="${i}" data-action="plot" aria-label="${esc(terr.name)} — قيمته ${t.value}">
+    <span class="plot-top">
+      <span class="plot-name">${esc(terr.name)}</span>
+      <span class="plot-val num">${t.value}${t.golden ? '<small>×2</small>' : ''}</span>
+    </span>
+    <span class="plot-art">${TERR_SVG[terr.kind](t.golden ? 1 : 0)}</span>
+    <span class="plot-foot">
+      <span class="plot-coins ${placed ? '' : 'empty'}" data-coins="${i}">
+        ${placed ? `${coinsHtml(Math.min(placed, 9))}<b class="num">${placed}</b>` : '<span class="hint-tap">اضغط</span>'}
+      </span>
+      ${placed ? `<span class="plot-minus" data-action="minus" data-plot="${i}" role="button" aria-label="اسحب عملة">−</span>` : ''}
+    </span>
+  </button>`;
+}
+
+function handHtml(v) {
+  const me = v.me;
+  const cards = me.roundCard ? [] : (me.cards || []);
+  const armed = S.armedCard;
+  if (!cards.length) return '';
+  return `<div class="hand" id="hand">
+    ${cards.map((c) => {
+    const used = (me.usedCards || []).includes(c.id);
+    const isArmed = armed === c.id;
+    return `<button class="hand-card ${used ? 'used' : ''} ${isArmed ? 'armed' : ''}"
+        data-action="arm-card" data-id="${c.id}" ${used || me.locked ? 'disabled' : ''}>
+        <span class="hc-ic">${cardIcon(c.id)}</span>
+        <span class="hc-nm">${esc(c.name)}</span>
+        ${used ? '<span class="hc-used">استُعملت</span>' : isArmed ? '<span class="hc-armed">اختر هدفاً</span>' : ''}
+      </button>`;
+  }).join('')}
   </div>`;
 }
 
 function buildAllocate(v) {
   const me = v.me;
   const draft = ensureDraft(v);
-  const unitEnergy = me.energy;
-  const total = draft.reduce((s, x) => s + x, 0);
-  const remaining = unitEnergy - total;
-  const territories = v.tiles.map((t, i) => territoryFor(i, v.tiles.length));
+  const remaining = me.energy - draft.reduce((s, x) => s + x, 0);
 
   screenEl.innerHTML = `
     <div class="screen-inner allocate">
@@ -803,50 +831,35 @@ function buildAllocate(v) {
         ${timerHtml()}
         ${mutedBtn()}
       </div>
-      <div class="progress" id="hud-progress"><i></i></div>
-      <div class="cardline">${cardButton(v)}</div>
-
-      <div class="tiles" id="tiles">
-        ${v.tiles.map((t, i) => tileRowHtml(t, i, draft[i], territories[i])).join('')}
-      </div>
-
-      <div class="well ${remaining === 0 ? 'ready' : ''}" id="well">
-        <div class="well-info">
-          <div class="well-num"><b data-remaining class="num">${remaining}</b><small>متبقٍ</small></div>
-          <div class="tiny dim" data-energy-label>من ${unitEnergy} ⚡</div>
+      <div class="map-tip" id="map-tip"><span>الأعلى على الأرض يأخذها</span></div>
+      <div class="map-wrap" id="map-wrap">
+        <div class="map" id="map">
+          ${v.tiles.map((t, i) => plotHtml(t, i, draft, v.tiles.length)).join('')}
         </div>
-        <div class="well-orbs" id="well-orbs" data-action="pour-hint">
-          ${Array.from({ length: unitEnergy }, (_, k) => `<i class="orb ${k >= total ? '' : 'spent'}"></i>`).join('')}
-        </div>
-        <button class="lock-btn ${remaining === 0 ? 'ready' : ''}" data-action="lock" ${remaining === 0 ? '' : 'disabled'}>
-          ${remaining === 0 ? 'اقفل ✔' : `وزّع ${remaining}`}
-        </button>
       </div>
-
+      <div id="hand-slot">${handHtml(v)}</div>
+      <div class="dock">
+        <div class="pouch" id="pouch" data-action="pouch">
+          <span class="pouch-coins">${coinsHtml(me.energy)}</span>
+          <span class="pouch-num"><b class="num" data-remaining>${remaining}</b><small>عملة</small></span>
+        </div>
+        <button class="dock-btn" data-action="autofill" ${remaining === 0 ? 'disabled' : ''}>املأ الباقي</button>
+        <button class="lock-btn ${remaining === 0 ? 'ready' : ''}" data-action="lock"
+          ${remaining === 0 ? '' : 'disabled'}>${remaining === 0 ? 'اقفل ✔' : 'قفل'}</button>
+      </div>
       <div class="waiting-list" id="alloc-wait" style="display:none"></div>
     </div>`;
 
-  bindStepButtons();
-  bindWellDrag();
-  maybeTutorial();
-}
-
-function cardButton(v) {
-  const me = v.me;
-  const usable = (me.cards || []).filter((c) => !(me.usedCards || []).includes(c.id));
-  if (me.roundCard) {
-    return `<span class="card-open-btn used">${cardIcon(me.roundCard.card)} مفعّلة</span>`;
-  }
-  if (!usable.length) return '<span class="card-open-btn used">لا بطاقات متبقية</span>';
-  return `<button class="card-open-btn" data-action="open-cards" ${me.canActivate ? '' : 'disabled'}>
-    ${cardIcon(usable[0].id)} بطاقتك · ${usable.length}
-  </button>`;
+  bindDirectPlacement();
+  bindPouchDrag();
 }
 
 function renderAllocate(v) {
   const key = `alloc:${v.matchNo}:${v.round}`;
   if (S.mountKey !== key) {
     S.mountKey = key;
+    S.armedCard = null;
+    S.sniperPlot = null;
     buildAllocate(v);
   }
   patchAllocate(v);
@@ -859,231 +872,309 @@ function patchAllocate(v) {
   const total = draft.reduce((s, x) => s + x, 0);
   const remaining = me.energy - total;
 
-  // الشريط العلوي: خصوم + نقاط + حالة القفل
+  // شرائط اللاعبين + نبضة القفل
   const avatars = $('#hud-avatars');
   if (avatars) {
     const sig = v.players.map((p) => `${p.id}:${p.score}:${p.locked ? 1 : 0}`).join('|');
     if (avatars.dataset.sig !== sig) {
-      const prev = avatars.dataset.sig || '';
+      const before = (avatars.dataset.sig || '').split('|');
       avatars.innerHTML = v.players.map((p) => avatarHtml(p, { me: p.id === me.id })).join('');
       avatars.dataset.sig = sig;
-      // نبضة على من قفل للتوّ (بالمقعد، بلا اعتماد على CSS.escape)
-      if (prev) {
-        const before = prev.split('|');
-        v.players.forEach((p, idx) => {
-          const now = `${p.id}:${p.score}:${p.locked ? 1 : 0}`;
-          if (p.locked && before[idx] && before[idx] !== now) {
-            const el = avatars.children[idx];
-            if (el) el.classList.add('just-locked');
-          }
-        });
-      }
+      v.players.forEach((p, idx) => {
+        const now = `${p.id}:${p.score}:${p.locked ? 1 : 0}`;
+        if (p.locked && before[idx] && before[idx] !== now) {
+          avatars.children[idx]?.classList.add('just-locked');
+        }
+      });
+      bindAvatarTargets(v);
     }
   }
 
   const waitList = $('#alloc-wait');
-  const tilesEl = $('#tiles');
-  const well = $('#well');
+  const mapWrap = $('#map-wrap');
+  const dock = $('.dock');
+  const handSlot = $('#hand-slot');
 
   if (me.locked) {
-    if (tilesEl) tilesEl.style.display = 'none';
-    if (well) well.style.display = 'none';
-    const line = $('.cardline');
-    if (line) line.style.display = 'none';
+    const tipEl = $('#map-tip');
+    if (tipEl) tipEl.style.display = 'none';
+    if (mapWrap) mapWrap.style.display = 'none';
+    if (dock) dock.style.display = 'none';
+    if (handSlot) handSlot.style.display = 'none';
     if (waitList) {
       waitList.style.display = 'flex';
       const lockedCount = v.players.filter((p) => p.locked).length;
       waitList.innerHTML = `
         <div class="card center" style="display:flex;flex-direction:column;gap:2px">
-          <div class="bold" style="color:#BEF264">قفلت توزيعك ✓</div>
+          <div class="bold" style="color:#BEF264">قفلت مزادك ✓</div>
           <div class="tiny dim">الجولة ${v.round} · ${lockedCount}/${v.players.length} قفلوا</div>
         </div>
         ${v.players.map((p) => `
           <div class="wait-row ${p.locked ? 'ok' : ''}">
             ${tokenHtml(p, 'round')}
             <span class="grow ellipsis">${esc(p.name)}${p.id === me.id ? ' (أنت)' : ''}${p.botPlayed ? ' · بوت' : ''}</span>
-            <span>${p.locked ? '🔒' : '⏳'}</span>
+            <span class="st">${p.locked ? LOCK_SVG : WAIT_SVG}</span>
           </div>`).join('')}
-        <div class="tiny dim center">تُكشف كل الاختيارات معاً بعد قفل الجميع</div>`;
+        <div class="tiny dim center">تُفتح الأرض كلها معاً بعد قفل الجميع</div>`;
     }
     return;
   }
 
-  if (tilesEl) tilesEl.style.display = '';
-  if (well) { well.style.display = ''; well.classList.toggle('ready', remaining === 0); }
+  const tipEl2 = $('#map-tip');
+  if (tipEl2) tipEl2.style.display = '';
+  if (mapWrap) mapWrap.style.display = '';
+  if (dock) dock.style.display = '';
+  if (handSlot) handSlot.style.display = '';
   if (waitList) waitList.style.display = 'none';
 
+  // الكيس
   const remEl = $('[data-remaining]');
   if (remEl) remEl.textContent = String(remaining);
-  const energyLabel = $('[data-energy-label]');
-  if (energyLabel) energyLabel.textContent = `من ${me.energy} ⚡${me.bonus ? ' (+3 تعويض)' : ''}`;
-
-  const orbs = $('#well-orbs');
-  if (orbs) {
-    if (orbs.children.length !== me.energy) {
-      orbs.innerHTML = Array.from({ length: me.energy }, () => '<i class="orb"></i>').join('');
+  const pouch = $('#pouch');
+  if (pouch) {
+    pouch.classList.toggle('empty', remaining === 0);
+    const holder = pouch.querySelector('.pouch-coins');
+    if (holder && holder.children.length !== me.energy) {
+      holder.innerHTML = coinsHtml(me.energy);
     }
-    Array.from(orbs.children).forEach((el, k) => {
-      el.classList.toggle('spent', k < total);
-    });
+    if (holder) {
+      Array.from(holder.children).forEach((c, k) => {
+        c.classList.toggle('gone', k < total);
+      });
+    }
   }
-
-  draft.forEach((val, i) => {
-    const row = $(`.tile-row[data-tile="${i}"]`);
-    if (!row) return;
-    row.classList.toggle('has', val > 0);
-    const army = row.querySelector('.army');
-    const cnt = row.querySelector('.cnt');
-    const empty = row.querySelector('.army-empty');
-    if (empty) empty.style.display = val === 0 ? '' : 'none';
-    if (army && Number(army.dataset.val || -1) !== val) {
-      const golden = row.classList.contains('golden');
-      army.innerHTML = Array.from({ length: val }, (_, k) => `<i class="orb ${golden ? 'gold' : ''}" style="animation-delay:${k * 10}ms"></i>`).join('');
-      army.dataset.val = String(val);
-    }
-    if (cnt) {
-      cnt.textContent = String(val);
-      cnt.classList.toggle('zero', val === 0);
-    }
-    const minus = row.querySelector('[data-step="-1"]');
-    if (minus) minus.disabled = val <= 0;
-    const plus = row.querySelector('[data-step="1"]');
-    if (plus) plus.disabled = remaining <= 0;
-  });
-
+  const auto = $('[data-action="autofill"]');
+  if (auto) auto.disabled = remaining === 0;
   const lock = $('[data-action="lock"]');
   if (lock) {
     lock.disabled = remaining !== 0;
     lock.classList.toggle('ready', remaining === 0);
-    lock.textContent = remaining === 0 ? 'اقفل ✔' : `وزّع ${remaining}`;
+    lock.textContent = remaining === 0 ? 'اقفل ✔' : 'قفل';
   }
 
-  const cardline = $('.cardline');
-  if (cardline) {
-    cardline.style.display = '';
-    const html = cardButton(v);
-    if (cardline.innerHTML.trim() !== html.trim()) cardline.innerHTML = html;
-  }
-}
+  // الأراضي: العملات فقط (بلا إعادة بناء كي لا تُفقد الحركة)
+  draft.forEach((val, i) => {
+    const plot = $(`.plot[data-plot="${i}"]`);
+    if (!plot) return;
+    plot.classList.toggle('has', val > 0);
+    const holder = plot.querySelector('[data-coins]');
+    if (holder && Number(holder.dataset.val || -1) !== val) {
+      holder.dataset.val = String(val);
+      holder.classList.toggle('empty', val === 0);
+      holder.innerHTML = val
+        ? `${coinsHtml(Math.min(val, 9))}<b class="num">${val}</b>`
+        : '<span class="hint-tap">اضغط</span>';
+    }
+    const minus = plot.querySelector('.plot-minus');
+    if (val > 0 && !minus) {
+      const b = document.createElement('span');
+      b.className = 'plot-minus';
+      b.dataset.action = 'minus';
+      b.dataset.plot = String(i);
+      b.setAttribute('role', 'button');
+      b.textContent = '−';
+      plot.appendChild(b);
+    } else if (val === 0 && minus) {
+      minus.remove();
+    }
+  });
 
-function bindStepButtons() {
-  $$('[data-step]', screenEl).forEach((btn) => {
-    const step = Number(btn.dataset.step);
-    const i = Number(btn.dataset.i);
-    let hold = null;
-    let rep = null;
-    const apply = (silent = false) => {
-      const v = S.view;
-      if (!v || v.phase !== 'allocate' || v.me.locked) return;
-      const used = S.draft.reduce((s, x) => s + x, 0);
-      if (step > 0) {
-        if (used >= v.me.energy) { stop(); return; }
-        S.draft[i] += 1;
-        if (!silent) SFX.orb(used + 1);
-      } else {
-        if (S.draft[i] <= 0) { stop(); return; }
-        S.draft[i] -= 1;
-        if (!silent) SFX.unplace();
-      }
-      patchAllocate(v);
-      vibrate(7);
-      if (step > 0 && used + 1 >= v.me.energy) { vibrate([10, 36, 16]); stop(); }
-    };
-    const start = (e) => {
-      e.preventDefault();
-      apply();
-      hold = setTimeout(() => { rep = setInterval(() => apply(true), 80); }, 380);
-    };
-    const stop = () => {
-      if (hold) clearTimeout(hold);
-      if (rep) clearInterval(rep);
-      hold = null;
-      rep = null;
-    };
-    btn.addEventListener('pointerdown', start);
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => btn.addEventListener(ev, stop));
-    btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  // اليد
+  const slot = $('#hand-slot');
+  if (slot) {
+    const html = handHtml(v);
+    if (slot.innerHTML.trim() !== html.trim()) slot.innerHTML = html;
+  }
+
+  // تلميح الهدف عند تسليح بطاقة
+  const tip = $('#map-tip');
+  if (tip) {
+    tip.classList.toggle('show', !!S.armedCard);
+    const txt = S.armedCard === 'thief' ? 'اختر خصماً من الشريط العلوي'
+      : S.armedCard === 'sniper' ? (S.sniperPlot == null ? 'اختر أرضاً ثم خصماً' : 'اختر الخصم المستهدف')
+        : S.armedCard ? 'اختر أرضاً' : 'الأعلى على الأرض يأخذها';
+    const inner = tip.querySelector('span') || tip;
+    if (inner.textContent !== txt) inner.textContent = txt;
+  }
+  $$('.plot', screenEl).forEach((p) => {
+    p.classList.toggle('armable', !!S.armedCard && S.armedCard !== 'thief');
+    p.classList.toggle('armed-target', S.armedCard === 'sniper' && Number(p.dataset.plot) === S.sniperPlot);
+  });
+  $$('.avatar', screenEl).forEach((a) => {
+    a.classList.toggle('targetable', S.armedCard === 'thief' || (S.armedCard === 'sniper' && S.sniperPlot != null));
   });
 }
 
-/* سحب كرة من البئر إلى الأرض — يعمل بالإصبع، مع بقاء النقر بديلاً */
-function bindWellDrag() {
-  const orbs = $('#well-orbs');
-  if (!orbs) return;
+/* تلمس الأرض = عملة. لمس مطوّل = سحب عملة. لا أزرار حساب. */
+function bindDirectPlacement() {
+  $$('.plot', screenEl).forEach((plot) => {
+    const i = Number(plot.dataset.plot);
+    let hold = null;
+    let repeat = null;
+    let consumed = false;
+
+    const addOne = () => {
+      const v = S.view;
+      if (!v || v.phase !== 'allocate' || v.me.locked) return false;
+      if (S.armedCard) return false; // البطاقة المسلّحة توجّه اللمسة إلى هدف
+      const used = S.draft.reduce((s, x) => s + x, 0);
+      if (used >= v.me.energy) { toast('انتهت عملاتك — اسحب من أرض لأخرى', 'err'); return false; }
+      S.draft[i] += 1;
+      SFX.orb(used + 1);
+      vibrate(9);
+      flyCoin(plot);
+      patchAllocate(v);
+      plot.classList.add('bump');
+      setTimeout(() => plot.classList.remove('bump'), 240);
+      return true;
+    };
+    const removeOne = () => {
+      const v = S.view;
+      if (!v || v.phase !== 'allocate' || v.me.locked) return;
+      if (S.draft[i] <= 0) return;
+      S.draft[i] -= 1;
+      SFX.unplace();
+      vibrate(6);
+      patchAllocate(v);
+    };
+
+    plot.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.plot-minus')) return; // زر السحب له التعامل الخاص
+      consumed = false;
+      if (S.armedCard) return;
+      addOne();
+      hold = setTimeout(() => {
+        // ضغط مطوّل = سحب عملة
+        consumed = true;
+        removeOne();
+        vibrate(14);
+        repeat = setTimeout(() => { repeat = setInterval(removeOne, 140); }, 320);
+      }, 460);
+    });
+    const end = () => {
+      if (hold) clearTimeout(hold);
+      if (repeat) { clearTimeout(repeat); clearInterval(repeat); }
+      hold = null; repeat = null;
+    };
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => plot.addEventListener(ev, end));
+    plot.addEventListener('contextmenu', (e) => e.preventDefault());
+    void consumed;
+  });
+
+  $$('.plot-minus', screenEl).forEach((btn) => {
+    btn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const v = S.view;
+      const i = Number(btn.dataset.plot);
+      if (!v || v.phase !== 'allocate' || v.me.locked) return;
+      if (S.draft[i] <= 0) return;
+      S.draft[i] -= 1;
+      SFX.unplace();
+      vibrate(6);
+      patchAllocate(v);
+    });
+  });
+}
+
+/* كيس العملات: اسحب منه إلى أرض */
+function bindPouchDrag() {
+  const pouch = $('#pouch');
+  if (!pouch) return;
   let ghost = null;
   let dragging = false;
 
-  const onDown = (e) => {
+  pouch.addEventListener('pointerdown', (e) => {
     const v = S.view;
     if (!v || v.phase !== 'allocate' || v.me.locked) return;
     const used = S.draft.reduce((s, x) => s + x, 0);
-    if (used >= v.me.energy) { toast('وزّعت كل طاقتك', 'err'); return; }
+    if (used >= v.me.energy) return;
     dragging = true;
-    orbs.setPointerCapture?.(e.pointerId);
     ghost = document.createElement('i');
-    ghost.className = 'orb';
-    ghost.style.cssText = `position:fixed;z-index:75;width:16px;height:16px;left:${e.clientX - 8}px;top:${e.clientY - 8}px;pointer-events:none`;
+    ghost.className = 'coin fly';
+    ghost.style.cssText = `position:fixed;z-index:75;left:${e.clientX - 9}px;top:${e.clientY - 9}px;pointer-events:none`;
     document.body.appendChild(ghost);
-  };
-  const onMove = (e) => {
+  });
+  pouch.addEventListener('pointermove', (e) => {
     if (!dragging || !ghost) return;
-    ghost.style.left = `${e.clientX - 8}px`;
-    ghost.style.top = `${e.clientY - 8}px`;
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    $$('.tile-row', screenEl).forEach((r) => r.classList.remove('drop-hover'));
-    el?.closest('.tile-row')?.classList.add('drop-hover');
-  };
-  const onUp = (e) => {
+    ghost.style.left = `${e.clientX - 9}px`;
+    ghost.style.top = `${e.clientY - 9}px`;
+    $$('.plot', screenEl).forEach((p) => p.classList.remove('drop-hover'));
+    document.elementFromPoint(e.clientX, e.clientY)?.closest('.plot')?.classList.add('drop-hover');
+  });
+  const stop = (e) => {
     if (!dragging) return;
     dragging = false;
     ghost?.remove();
     ghost = null;
-    $$('.tile-row', screenEl).forEach((r) => r.classList.remove('drop-hover'));
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    const row = el?.closest('.tile-row');
-    if (!row) return;
-    const i = Number(row.dataset.tile);
+    $$('.plot', screenEl).forEach((p) => p.classList.remove('drop-hover'));
     const v = S.view;
+    const plot = document.elementFromPoint(e.clientX, e.clientY)?.closest('.plot');
+    if (!plot || !v) return;
     const used = S.draft.reduce((s, x) => s + x, 0);
     if (used >= v.me.energy) return;
+    const i = Number(plot.dataset.plot);
     S.draft[i] += 1;
     SFX.orb(used + 1);
     vibrate(9);
+    flyCoin(plot);
     patchAllocate(v);
-    row.classList.add('pop');
-    setTimeout(() => row.classList.remove('pop'), 240);
   };
-  orbs.addEventListener('pointerdown', onDown);
-  orbs.addEventListener('pointermove', onMove);
-  orbs.addEventListener('pointerup', onUp);
-  orbs.addEventListener('pointercancel', onUp);
+  pouch.addEventListener('pointerup', stop);
+  pouch.addEventListener('pointercancel', stop);
 }
 
-function maybeTutorial() {
-  if (!domAlive()) return;
-  if (localStorage.getItem(LS.tutorial) === '1') return;
-  localStorage.setItem(LS.tutorial, '1');
-  const texts = ['اضغط الأرض لتضع كرة', 'الأعلى طاقة يفوز بقيمتها', 'التساوي يضيّع الأرض'];
-  const box = document.createElement('div');
-  box.className = 'bubbles';
-  overlayRoot.appendChild(box);
-  texts.forEach((t, i) => {
-    setTimeout(() => {
-      const b = document.createElement('div');
-      b.className = 'bubble';
-      b.textContent = t;
-      box.appendChild(b);
-      setTimeout(() => b.remove(), 1900);
-      if (i === texts.length - 1) setTimeout(() => box.remove(), 2100);
-    }, i * 2000);
+function flyCoin(plot) {
+  const pouch = $('#pouch');
+  if (!pouch || !plot) return;
+  const a = pouch.getBoundingClientRect();
+  const b = plot.getBoundingClientRect();
+  const el = document.createElement('i');
+  el.className = 'coin fly';
+  el.style.cssText = `position:fixed;z-index:76;left:${a.left + a.width / 2 - 9}px;top:${a.top + a.height / 2 - 9}px;
+    transition:transform 340ms cubic-bezier(.2,.9,.25,1), opacity 340ms`;
+  document.body.appendChild(el);
+  const dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+  const dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+  requestAnimationFrame(() => {
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(.8)`;
+    el.style.opacity = '0.2';
+  });
+  setTimeout(() => el.remove(), 380);
+}
+
+/* البطاقات: تُسلَّح من اليد ثم تُوجَّه بلمسة على الأرض أو على خصم */
+function bindAvatarTargets(v) {
+  if (!S.armedCard) return;
+  $$('.avatar', screenEl).forEach((el, idx) => {
+    const p = v.players[idx];
+    if (!p || p.id === v.me.id) { el.classList.remove('targetable'); return; }
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const armed = S.armedCard;
+      if (armed === 'thief') { sendActivate('thief', { playerId: p.id }); return; }
+      if (armed === 'sniper' && S.sniperPlot != null) {
+        sendActivate('sniper', { tile: S.sniperPlot, playerId: p.id });
+      }
+    };
   });
 }
 
-/* ---------------------------------------------------------------- ٥) الكشف */
-function clearRevealTimers() {
-  (S.revealTimers || []).forEach((t) => clearTimeout(t));
-  S.revealTimers = [];
+function handlePlotTap(i, v) {
+  const armed = S.armedCard;
+  if (!armed) return false;
+  if (armed === 'thief') { toast('اختر خصماً من الشريط العلوي', 'err'); return true; }
+  if (armed === 'sniper') {
+    S.sniperPlot = i;
+    patchAllocate(v);
+    toast('اختر الخصم المستهدف من الأعلى', 'good');
+    return true;
+  }
+  sendActivate(armed, { tile: i });
+  return true;
 }
+
+
 
 function renderReveal(v) {
   const rv = v.reveal;
@@ -1093,44 +1184,39 @@ function renderReveal(v) {
   clearRevealTimers();
   S.revealKey = key;
   S.mountKey = null;
+  S.armedCard = null;
 
   const players = v.players;
   const byId = (id) => players.find((p) => p.id === id) || { name: '؟', color: '#888', shape: '●' };
-  const meId = v.me?.id;
+  const total = rv.tiles.length;
 
-  // نتيجة كل أرض بترتيب القيم تصاعدياً (كما يصل من السيرفر)
-  const rows = rv.tiles.map((t) => {
+  // نفس الخريطة، لكن الأراضي مفتوحة: عملات كل لاعب فوق أرضه
+  const plots = rv.tiles.map((t) => {
     const idx = t.index;
-    const terr = territoryFor(idx, rv.tiles.length);
-    const totalE = Object.values(t.energies).reduce((s, x) => s + x, 0) || 1;
-    const segs = players
+    const terr = territoryFor(idx, total);
+    const stacks = players
       .filter((p) => (t.energies[p.id] || 0) > 0)
-      .map((p) => `<span style="width:0;background:${colorOf(p)}" data-w="${((t.energies[p.id] || 0) / totalE) * 100}"></span>`)
-      .join('');
-    const chips = players.map((p) => {
-      const e = t.energies[p.id] || 0;
-      const win = t.winnerId === p.id;
-      return `<span class="rv-chip ${win ? 'win' : ''}" style="${e ? '' : 'opacity:.35'}">
-        <span class="sh" style="color:${colorOf(p)}">${esc(p.shape)}</span>${esc(p.name)} ${e}${win ? ' 👑' : ''}
-      </span>`;
-    }).join('');
-    let label = 'لا أحد';
-    let labelCls = '';
-    if (t.winnerId) { label = `${byId(t.winnerId).name} +${t.value}`; labelCls = 'win'; }
-    else if (t.decidedBy === 'annulled') { label = 'تصادم — ضاعت'; labelCls = 'lose'; }
-    else if (t.decidedBy === 'sniper') { label = '🎯 أُلغي الفوز'; labelCls = 'lose'; }
-    return `<div class="reveal-tile ${t.golden ? 'golden' : ''} ${t.collision ? 'collision' : ''}"
-        data-reveal-row="${idx}" data-winner="${t.winnerId || ''}">
-      <div class="rv-head">
-        <div class="rv-art">${TERR_SVG[terr.kind](t.golden ? 1 : 0)}</div>
-        <div class="rv-value ${t.golden ? 'golden' : ''} num">${t.value}</div>
-        <div class="rv-seg">${segs}</div>
-        <div class="rv-label ${labelCls}">
-          ${t.winnerId ? `<span class="flag" style="--c:${colorOf(byId(t.winnerId))}"><i class="pole"></i><i class="pen"></i></span>` : ''}
-          <span>${esc(label)}</span>
-        </div>
-      </div>
-      <div class="rv-players">${chips}${t.doubled ? '<span class="rv-chip">×2 مضاعف</span>' : ''}</div>
+      .map((p) => `<span class="stack" style="--c:${colorOf(p)}">
+          <span class="stack-coins">${coinsHtml(Math.min(t.energies[p.id], 8), 'own')}</span>
+          <b class="num">${t.energies[p.id]}</b>
+        </span>`).join('');
+    let label = '<span class="rv-none">لا أحد</span>';
+    if (t.winnerId) {
+      label = `<span class="rv-win" style="--c:${colorOf(byId(t.winnerId))}">
+        <span class="flag" style="--c:${colorOf(byId(t.winnerId))}"><i class="pole"></i><i class="pen"></i></span>
+        ${esc(byId(t.winnerId).name)} <b>+${t.value}</b></span>`;
+    } else if (t.decidedBy === 'annulled') label = '<span class="rv-lost">تصادم — ضاعت</span>';
+    else if (t.decidedBy === 'sniper') label = '<span class="rv-lost">قناص ألغاها</span>';
+
+    return `<div class="plot reveal ${t.golden ? 'golden' : ''} ${t.winnerId ? 'won' : ''}"
+        data-reveal-plot="${idx}" style="--wc:${t.winnerId ? colorOf(byId(t.winnerId)) : 'transparent'}">
+      <span class="plot-top">
+        <span class="plot-name">${esc(terr.name)}</span>
+        <span class="plot-val num">${t.value}${t.golden ? '<small>×2</small>' : ''}</span>
+      </span>
+      <span class="plot-art">${TERR_SVG[terr.kind](t.golden ? 1 : 0)}</span>
+      <span class="stacks">${stacks}</span>
+      <span class="plot-foot">${label}</span>
     </div>`;
   }).join('');
 
@@ -1138,49 +1224,47 @@ function renderReveal(v) {
     <div class="screen-inner reveal-screen">
       ${connBanner()}
       <div class="hud">
-        <div class="avatars" id="hud-avatars"></div>
-        <span class="pill">الجولة ${v.round}/${v.rounds}</span>
+        <div class="avatars" id="hud-avatars">
+          ${players.map((p) => avatarHtml(p, { me: p.id === v.me?.id })).join('')}
+        </div>
         ${timerHtml()}
         <button class="btn btn-ghost btn-small" data-action="skip-reveal" id="skip-btn"
           style="display:none">تخطّي</button>
       </div>
-      <div class="progress" id="hud-progress"><i></i></div>
-      <div class="reveal-list" id="reveal-list">${rows}</div>
+      <div class="map-tip show" id="map-tip"><span>تُفتح الأرض واحدة واحدة…</span></div>
+      <div class="map-wrap reveal">
+        <div class="map" id="map">${plots}</div>
+      </div>
       <div class="emote-bar">
-        ${EMOJIS.map((e) => `<button class="emote-btn" data-action="emote" data-emoji="${e}">${e}</button>`).join('')}
+        ${EMOJIS.map((e) => `<button class="emote-btn" data-action="emote" data-emoji="${e}" aria-label="انفعال">${EMOTE_SVG[e] || ''}</button>`).join('')}
         ${mutedBtn()}
       </div>
     </div>`;
 
-  // شريط النقاط يعرض نقاط ما قبل الجولة ثم يتصاعد
   S.scores = {};
-  players.forEach((p) => {
-    S.scores[p.id] = rv.perPlayer[p.id]?.scoreBefore ?? p.score;
-  });
+  players.forEach((p) => { S.scores[p.id] = rv.perPlayer[p.id]?.scoreBefore ?? p.score; });
   refreshRevealAvatars(v);
 
-  const rowEls = $$('[data-reveal-row]', screenEl);
-  const step = 1200;
-  rowEls.forEach((row, order) => {
+  const els = $$('[data-reveal-plot]', screenEl);
+  const step = 950;
+  els.forEach((el, order) => {
     const t = rv.tiles[order];
     const tm = setTimeout(() => {
-      row.classList.add('show');
-      $$('.rv-seg span', row).forEach((s) => { s.style.width = `${s.dataset.w}%`; });
+      el.classList.add('show');
       SFX.reveal(order);
       if (t.winnerId) {
-        row.classList.add('winner-glow');
+        el.classList.add('open');
         const pts = document.createElement('div');
         pts.className = 'float-points';
         pts.textContent = `+${t.value}`;
-        row.appendChild(pts);
+        el.appendChild(pts);
         setTimeout(() => pts.remove(), 1200);
-        const after = rv.perPlayer[t.winnerId]?.scoreBefore ?? 0;
-        S.scores[t.winnerId] = after + t.value - (rv.perPlayer[t.winnerId]?.trapLoss ? 0 : 0);
+        S.scores[t.winnerId] = (rv.perPlayer[t.winnerId]?.scoreBefore ?? 0) + t.value;
         refreshRevealAvatars(v);
         vibrate(14);
       }
       if (t.collision) {
-        row.classList.add('clash');
+        el.classList.add('clash');
         SFX.clash();
         vibrate([26, 46, 26]);
       }
@@ -1189,16 +1273,13 @@ function renderReveal(v) {
         const skip = $('#skip-btn');
         if (skip) skip.style.display = '';
       }
-      if (order === rowEls.length - 1) {
-        // النقاط النهائية بعد كل الآثار (فخ/مضاعف)
+      if (order === els.length - 1) {
         setTimeout(() => {
-          players.forEach((p) => {
-            S.scores[p.id] = rv.perPlayer[p.id]?.scoreAfter ?? p.score;
-          });
+          players.forEach((p) => { S.scores[p.id] = rv.perPlayer[p.id]?.scoreAfter ?? p.score; });
           refreshRevealAvatars(v);
         }, 420);
       }
-    }, order * step + 60);
+    }, order * step + 80);
     S.revealTimers.push(tm);
   });
 }
@@ -1213,19 +1294,19 @@ function skipReveal() {
   clearRevealTimers();
   const v = S.view;
   const rv = v?.reveal;
-  $$('[data-reveal-row]', screenEl).forEach((row, order) => {
-    row.classList.add('show');
-    if (rv && rv.tiles[order]?.winnerId) row.classList.add('winner-glow');
-    $$('.rv-seg span', row).forEach((s) => { s.style.width = `${s.dataset.w}%`; });
+  $$('[data-reveal-plot]', screenEl).forEach((el, order) => {
+    el.classList.add('show');
+    if (rv && rv.tiles[order]?.winnerId) el.classList.add('open');
   });
   if (rv) {
-    v.players.forEach((p) => {
-      S.scores[p.id] = rv.perPlayer[p.id]?.scoreAfter ?? p.score;
-    });
+    v.players.forEach((p) => { S.scores[p.id] = rv.perPlayer[p.id]?.scoreAfter ?? p.score; });
     refreshRevealAvatars(v);
   }
+  const tip = $('#map-tip');
+  if (tip) { const s = tip.querySelector('span') || tip; s.textContent = 'انتهت الأرض — الترتيب بعد قليل'; }
   SFX.click();
 }
+
 
 /* -------------------------------------------------------- ٦) بين الجولات */
 function renderBetween(v) {
@@ -1247,7 +1328,7 @@ function renderBetween(v) {
         ${timerHtml()}
       </div>
       ${b.bonusName ? `<div class="card center small" style="padding:9px">
-        <b style="color:#BEF264">🎁 ${esc(b.bonusName)}</b> يأخذ تعويض الأخير +${b.bonusAmount}
+        <span class="gift">${GIFT_SVG}</span> <b style="color:#BEF264">${esc(b.bonusName)}</b> يأخذ تعويض الأخير +${b.bonusAmount}
       </div>` : ''}
 
       <div class="standings">
@@ -1263,24 +1344,29 @@ function renderBetween(v) {
   }).join('')}
       </div>
 
-      ${rv ? `<div class="card small" style="padding:10px">
-        <div class="section-title">خريطة الجولة — أين وضعوا طاقتهم</div>
-        <div class="map">
+      ${rv ? `<div class="between-map">
+        <div class="section-title">خريطة الجولة — أين ذهبت الطاقة</div>
+        <div class="bmap">
           ${rv.tiles.map((t, i) => {
-    const totalE = Object.values(t.energies).reduce((s, x) => s + x, 0) || 1;
-    return `<div class="map-row">
-              <span class="map-val ${i === topIndex ? 'bold' : ''}" style="${i === topIndex ? 'color:#FFC65C' : ''}">${t.value}</span>
-              <div class="map-bars">
-                ${v.players.filter((p) => (t.energies[p.id] || 0) > 0).map((p) => `<i style="width:${((t.energies[p.id] || 0) / totalE) * 100}%;background:${colorOf(p)}"></i>`).join('')}
-              </div>
+    const terr = territoryFor(i, rv.tiles.length);
+    const sumE = Object.values(t.energies).reduce((s, x) => s + x, 0);
+    const heat = Math.min(1, sumE / Math.max(1, v.me?.energy || 10));
+    const win = t.winnerId ? v.players.find((p) => p.id === t.winnerId) : null;
+    return `<div class="bmap-tile ${t.golden ? 'golden' : ''} ${win ? 'won' : ''}"
+                style="--heat:${heat.toFixed(2)};--wc:${win ? colorOf(win) : 'transparent'}">
+              <span class="bmap-art">${TERR_SVG[terr.kind](t.golden ? 1 : 0)}</span>
+              <span class="bmap-val num">${t.value}</span>
+              ${sumE ? `<span class="bmap-coins">${coinsHtml(Math.min(sumE, 5))}<b class="num">${sumE}</b></span>` : ''}
+              ${win ? `<span class="bmap-dot" style="background:${colorOf(win)}"></span>` : ''}
             </div>`;
   }).join('')}
         </div>
-        ${habits.length ? `<div class="habit" style="margin-top:6px"><span class="eye">${EYE_SVG}</span> ${esc(habits[0])}</div>` : ''}
+        ${habits.length ? `<div class="habit" style="margin-top:2px"><span class="eye">${EYE_SVG}</span> ${esc(habits[0])}</div>` : ''}
       </div>` : ''}
 
+
       <div class="emote-bar">
-        ${EMOJIS.map((e) => `<button class="emote-btn" data-action="emote" data-emoji="${e}">${e}</button>`).join('')}
+        ${EMOJIS.map((e) => `<button class="emote-btn" data-action="emote" data-emoji="${e}" aria-label="انفعال">${EMOTE_SVG[e] || ''}</button>`).join('')}
         ${mutedBtn()}
       </div>
     </div>`;
@@ -1411,105 +1497,6 @@ function updateTimerNodes() {
 setInterval(() => { try { updateTimerNodes(); } catch { /* صفحة مغلقة */ } }, 250);
 
 /* ------------------------------------------------------- الأوراق السفلية */
-function closeSheet() {
-  S.sheet = null;
-  S.cardFlow = null;
-  sheetRoot.innerHTML = '';
-}
-
-function openSheet(html) {
-  sheetRoot.innerHTML = `<div class="sheet-backdrop" data-action="close-sheet"></div>
-    <div class="sheet"><div class="sheet-handle"></div>${html}</div>`;
-  requestAnimationFrame(() => {
-    if (!domAlive()) return;
-    sheetRoot.querySelector('.sheet-backdrop')?.classList.add('show');
-    sheetRoot.querySelector('.sheet')?.classList.add('show');
-  });
-}
-
-function openCardsSheet() {
-  const v = S.view;
-  if (!v || v.phase !== 'allocate' || v.me.locked || v.me.roundCard) return;
-  const usable = (v.me.cards || []).filter((c) => !(v.me.usedCards || []).includes(c.id));
-  if (!usable.length) { toast('لا بطاقات متاحة', 'err'); return; }
-  S.cardFlow = { step: 'card', card: null, target: {} };
-  openSheet(`
-    <div class="sheet-title">بطاقتك — اختر واحدة</div>
-    <div class="tiny dim center">تُفعَّل قبل القفل · سريّة حتى الكشف</div>
-    <div class="stack">
-      ${usable.map((c) => `<button class="pick-card-row" data-action="choose-card" data-id="${c.id}">
-        <span class="ico">${cardIcon(c.id)}</span>
-        <span class="grow"><span class="bold">${esc(c.name)}</span><span class="ds">${esc(c.desc)}</span></span>
-      </button>`).join('')}
-    </div>
-    <button class="btn btn-ghost btn-small" data-action="close-sheet">إلغاء</button>`);
-}
-
-function openCardTargetSheet() {
-  const v = S.view;
-  const flow = S.cardFlow;
-  if (!v || !flow || !flow.card) return;
-  const card = flow.card;
-  const others = v.players.filter((p) => p.id !== v.me.id);
-
-  if (card.target === 'player') {
-    openSheet(`
-      <div class="sheet-title">${card.icon} ${esc(card.name)} — اختر خصماً</div>
-      <div class="tiny dim center">يخسر ٢ طاقة هذه الجولة ويُعلَم قبل أن يوزّع</div>
-      <div class="stack">
-        ${others.map((p) => `<button class="pick-card-row" data-action="target-player" data-id="${p.id}">
-          ${tokenHtml(p, 'round')}
-          <span class="grow bold">${esc(p.name)}${p.isBot ? ' · بوت' : ''}</span>
-          <span class="dim small">${p.energy} ⚡</span>
-        </button>`).join('')}
-      </div>
-      <button class="btn btn-ghost btn-small" data-action="back-to-cards">رجوع</button>`);
-    return;
-  }
-  if (flow.step === 'player') {
-    openSheet(`
-      <div class="sheet-title">${card.icon} — اختر اللاعب المستهدف</div>
-      <div class="tiny dim center">إذا فاز بالأرض رقم ${Number(flow.target.tile) + 1} يُلغى فوزه</div>
-      <div class="stack">
-        ${others.map((p) => `<button class="pick-card-row" data-action="target-player" data-id="${p.id}">
-          ${tokenHtml(p, 'round')}<span class="grow bold">${esc(p.name)}</span>
-        </button>`).join('')}
-      </div>
-      <button class="btn btn-ghost btn-small" data-action="back-to-cards">رجوع</button>`);
-    return;
-  }
-  openSheet(`
-    <div class="sheet-title">${card.icon} ${esc(card.name)} — اختر أرضاً</div>
-    <div class="tiny dim center">${esc(card.desc)}</div>
-    <div class="opt-grid">
-      ${v.tiles.map((t, i) => {
-    const terr = territoryFor(i, v.tiles.length);
-    return `<button class="opt" data-action="target-tile" data-i="${t.index}">
-        ${t.value}${t.golden ? ' <small>×2</small>' : ''}</button>`;
-  }).join('')}
-    </div>
-    <button class="btn btn-ghost btn-small" data-action="back-to-cards">رجوع</button>`);
-}
-
-function openKeypadSheet(index) {
-  const v = S.view;
-  if (!v || v.phase !== 'allocate' || v.me.locked) return;
-  const draft = S.draft;
-  const usedOthers = draft.reduce((s, x) => s + x, 0) - (draft[index] || 0);
-  const max = Math.min(v.me.energy, v.me.energy - usedOthers);
-  const terr = territoryFor(index, v.tiles.length);
-  S.sheet = { kind: 'keypad', index };
-  const keys = Array.from({ length: v.me.energy + 1 }, (_, n) => n);
-  openSheet(`
-    <div class="sheet-title">${esc(terr.name)} · قيمته ${v.tiles[index].value}${v.tiles[index].golden ? ' ×2' : ''}</div>
-    <div class="val-preview">الطاقة هنا: <b>${draft[index] || 0}</b> — الحد ${max}</div>
-    <div class="keypad">
-      ${keys.map((n) => `<button class="key ${n === (draft[index] || 0) ? 'sel' : ''}" data-action="set-value"
-        data-n="${n}" ${n > max ? 'disabled style="opacity:.3"' : ''}>${n}</button>`).join('')}
-    </div>
-    <button class="btn btn-primary" data-action="close-sheet">تم</button>`);
-}
-
 /* --------------------------------------------------------------- الأحداث */
 document.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-action]');
@@ -1562,74 +1549,53 @@ document.addEventListener('click', (ev) => {
       break;
     }
 
-    case 'add': {
+    case 'plot': {
       if (!v || v.phase !== 'allocate' || v.me.locked) break;
-      const i = Number(el.dataset.i);
-      const used = S.draft.reduce((s, x) => s + x, 0);
-      if (used >= v.me.energy) { toast('وزّعت كل طاقتك — اضغط − لتعديل', 'err'); break; }
-      S.draft[i] += 1;
-      SFX.orb(used + 1);
-      vibrate(9);
-      patchAllocate(v);
-      const row = el.closest('.tile-row');
-      if (row) { row.classList.add('pop'); setTimeout(() => row.classList.remove('pop'), 240); }
+      handlePlotTap(Number(el.dataset.plot), v);
       break;
     }
-    case 'set': openKeypadSheet(Number(el.dataset.i)); break;
-    case 'set-value': {
-      const sheet = S.sheet;
-      if (!sheet || sheet.kind !== 'keypad') break;
-      const usedOthers = S.draft.reduce((s, x) => s + x, 0) - (S.draft[sheet.index] || 0);
-      const val = Number(el.dataset.n);
-      if (usedOthers + val > v.me.energy) break;
-      S.draft[sheet.index] = val;
-      SFX.click();
-      closeSheet();
-      patchAllocate(v);
-      vibrate(10);
-      break;
-    }
+    case 'minus': break; // يُعالج بلمسة مباشرة على الأرض
+    case 'pouch': break; // السحب من الكيس يُعالج بـ pointer
     case 'lock': {
       if (!v || v.phase !== 'allocate' || v.me.locked) break;
-      const used = S.draft.reduce((s, x) => s + x, 0);
-      if (used !== v.me.energy) { toast('وزّع كل الطاقة أولاً', 'err'); break; }
-      SFX.clank();
-      vibrate(22);
+      const total = S.draft.reduce((s, x) => s + x, 0);
+      if (total !== v.me.energy) {
+        toast(`ضع كل عملاتك: ${total} من ${v.me.energy}`, 'err');
+        break;
+      }
       wsSend({ type: 'lock', alloc: S.draft.slice() });
+      vibrate(18);
       break;
     }
-    case 'open-cards': openCardsSheet(); break;
-    case 'choose-card': {
-      const flow = S.cardFlow;
-      if (!flow || !v) break;
-      const card = (v.me.cards || []).find((c) => c.id === el.dataset.id);
-      if (!card) break;
-      flow.card = card;
-      flow.target = {};
-      flow.step = 'tile';
+    case 'arm-card': {
+      if (!v || v.phase !== 'allocate' || v.me.locked) break;
+      const id = el.dataset.id;
+      const used = (v.me.usedCards || []).includes(id);
+      if (used || v.me.roundCard) { toast('لا يمكن استعمالها الآن', 'err'); break; }
+      S.armedCard = S.armedCard === id ? null : id;
+      S.sniperPlot = null;
       SFX.click();
-      openCardTargetSheet();
+      patchAllocate(v);
       break;
     }
-    case 'target-tile': {
-      const flow = S.cardFlow;
-      if (!flow) break;
-      flow.target.tile = Number(el.dataset.i);
-      if (flow.card.target === 'tilePlayer') {
-        flow.step = 'player';
-        openCardTargetSheet();
-      } else sendActivate(flow.card.id, flow.target);
+    case 'autofill': {
+      if (!v || v.phase !== 'allocate' || v.me.locked) break;
+      const left = v.me.energy - S.draft.reduce((s, x) => s + x, 0);
+      if (left <= 0) break;
+      const touched = S.draft.map((x, i) => (x > 0 ? i : -1)).filter((i) => i >= 0);
+      const pool = touched.length ? touched : S.draft.map((_, i) => i);
+      let k = 0;
+      while (left > k) { /* توزيع دائري */
+        // eslint-disable-next-line no-plusplus
+        S.draft[pool[k % pool.length]] += 1;
+        k += 1;
+        if (k > 400) break;
+      }
+      SFX.clank();
+      vibrate(16);
+      patchAllocate(v);
       break;
     }
-    case 'target-player': {
-      const flow = S.cardFlow;
-      if (!flow) break;
-      flow.target.playerId = el.dataset.id;
-      sendActivate(flow.card.id, flow.target);
-      break;
-    }
-    case 'back-to-cards': openCardsSheet(); break;
-    case 'close-sheet': closeSheet(); break;
 
     case 'emote': {
       const now = Date.now();
@@ -1654,7 +1620,9 @@ function sendActivate(cardId, target) {
   SFX.clank();
   vibrate(15);
   wsSend({ type: 'activate', card: cardId, target });
-  closeSheet();
+  S.armedCard = null;
+  S.sniperPlot = null;
+  setTimeout(() => { if (S.view && S.view.phase === 'allocate') patchAllocate(S.view); }, 60);
 }
 
 function shareLink() {
