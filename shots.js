@@ -60,6 +60,9 @@ const views = {
     me: { ...me, energy: 10, alloc: [2, 2, 0, 0, 6, 0] } },
   markMap: { ...base, round: 2, players, tiles: tiles4,
     me: { ...me, energy: 10, alloc: [3, 0, 4, 3], roundCard: { card: 'trap', target: { tile: 2 } }, usedCards: ['trap'] } },
+  briefMap: { ...base, phase: 'brief', round: 3, players, tiles: tiles6,
+    event: 'ذهبي', eventInfo: { id: 'ذهبي', desc: 'قيمة أعلى أرض تتضاعف' },
+    me: { ...me, ready: false } },
   endMap: { ...base, phase: 'end', round: 5, deadline: 0, players,
     end: {
       winners: ['p1'],
@@ -112,6 +115,12 @@ const views = {
   await page.click('.hand-card[data-id="shield"]');
   await page.waitForTimeout(350);
   await page.screenshot({ path: path.join(OUT, 'map-armed.png') });
+  // لوحة اختيار القائد (اللص)
+  await page.goto(URL('map4'), { waitUntil: 'load' });
+  await page.waitForTimeout(300);
+  await page.click('.hand-card[data-id="thief"]');
+  await page.waitForTimeout(420);
+  await page.screenshot({ path: path.join(OUT, 'target-sheet.png') });
   console.log('errors:', errors.length ? errors : 'none');
   await browser.close();
 })();

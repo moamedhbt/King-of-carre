@@ -155,7 +155,7 @@ function cardDefPublic(id) {
 
 function viewFor(room, viewer) {
   const isPlayer = viewer && room.players.includes(viewer);
-  const inMatch = ['cards', 'allocate', 'reveal', 'between', 'end'].includes(room.phase);
+  const inMatch = ['cards', 'brief', 'allocate', 'reveal', 'between', 'end'].includes(room.phase);
   const publicPlayers = playersSorted(room).map((p) => ({
     id: p.id,
     name: p.name,
@@ -198,7 +198,7 @@ function viewFor(room, viewer) {
     isSpectator: !isPlayer,
   };
 
-  if (room.tiles && ['allocate', 'reveal', 'between', 'end'].includes(room.phase)) {
+  if (room.tiles && ['brief', 'allocate', 'reveal', 'between', 'end'].includes(room.phase)) {
     view.tiles = room.tiles.map((t, index) => ({ index, value: t.value, golden: t.golden }));
     view.event = room.event;
     const info = G.eventInfo(room.event);
@@ -225,6 +225,7 @@ function viewFor(room, viewer) {
       canActivate: room.phase === 'allocate' && !me.locked && !me.roundCard
         && me.cardsChosen.some((c) => !me.usedCards.includes(c)),
       cardsConfirmed: me.cardsChosen.length === 3,
+      ready: room.readyIds ? room.readyIds.includes(me.id) : false,
       revenge: room.revengeVotes.includes(me.id),
     };
     if (room.phase === 'cards') {
@@ -281,6 +282,8 @@ function createRoom() {
     betweenInfo: null,
     endInfo: null,
     pendingBonus: null,
+    readyIds: [],
+    briefRound: 0,
     revengeVotes: [],
     h2h: {},
     emptySince: Date.now(),
@@ -417,10 +420,12 @@ function startRound(room, roundNo) {
     p.botPlayed = p.isBot || !p.connected;
   });
   room.pendingBonus = null;
-  room.phase = 'allocate';
-  const ms = roundNo === 1 ? G.CONFIG.FIRST_TIMER_MS : G.CONFIG.TIMER_MS;
-  setPhaseTimer(room, T(ms), () => onAllocateTimeout(room));
-  scheduleBots(room);
+  // شاشة القاعدة: يقرأ الجميع الحدث وقيم الأرض، ويضغط «مستعد» حين ينتهي
+  room.phase = 'brief';
+  room.readyIds = [];
+  room.briefRound = roundNo;
+  setPhaseTimer(room, T(G.CONFIG.BRIEF_MS), () => beginAllocate(room));
+  scheduleBotReady(room);
   broadcast(room);
   broadcastEvent(room, {
     type: 'round-start',
@@ -429,6 +434,43 @@ function startRound(room, roundNo) {
     eventDesc: G.eventInfo(room.event).desc,
     bonusTo: bonusTo || null,
     bonusName: bonusTo ? (room.players.find((p) => p.id === bonusTo) || {}).name : null,
+  });
+}
+
+function readyPlayer(room, player) {
+  if (room.phase !== 'brief') return;
+  if (!room.readyIds.includes(player.id)) room.readyIds.push(player.id);
+  maybeBegin(room);
+  broadcast(room);
+}
+
+function maybeBegin(room) {
+  if (room.phase !== 'brief') return;
+  const pendingHumans = room.players.filter(
+    (p) => !p.isBot && p.connected && !room.readyIds.includes(p.id),
+  );
+  if (pendingHumans.length === 0) beginAllocate(room);
+}
+
+function beginAllocate(room) {
+  if (room.phase !== 'brief') return;
+  clearRoomTimers(room);
+  room.phase = 'allocate';
+  const ms = room.round === 1 ? G.CONFIG.FIRST_TIMER_MS : G.CONFIG.TIMER_MS;
+  setPhaseTimer(room, T(ms), () => onAllocateTimeout(room));
+  scheduleBots(room);
+  broadcast(room);
+}
+
+function scheduleBotReady(room) {
+  room.players.filter((p) => p.isBot || !p.connected).forEach((p) => {
+    const t = setTimeout(() => {
+      if (room.phase !== 'brief') return;
+      if (!room.readyIds.includes(p.id)) room.readyIds.push(p.id);
+      maybeBegin(room);
+      broadcast(room);
+    }, T(700 + Math.random() * 1400));
+    room.botTimers.push(t);
   });
 }
 
@@ -988,6 +1030,10 @@ function onMessage(socket, raw) {
       const res = applyCard(room, player, { card: msg.card, target: msg.target });
       if (res && res.error) sendError(player, res.error);
       else broadcast(room);
+      break;
+    }
+    case 'ready': {
+      readyPlayer(room, player);
       break;
     }
     case 'lock': {

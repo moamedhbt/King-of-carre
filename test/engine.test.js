@@ -10,7 +10,9 @@ function board(values, golden = false) {
   return values.map((v) => ({ value: v, baseValue: v, golden: golden && v === Math.max(...values) }));
 }
 
-test('سحب المربعات: عدد = لاعبين + 1، بلا تكرار، تصاعدي، والتضاعف في «ذهبي» فقط', () => {
+test('سحب المربعات: عدد = لاعبين + 1، بلا تكرار، القيم عشوائية المواضع، والتضاعف في «ذهبي» فقط', () => {
+  let sortedCount = 0;
+  let totalCount = 0;
   for (let n = 3; n <= 5; n += 1) {
     for (let k = 0; k < 50; k += 1) {
       const rng = G.mulberry32(k + n * 1000);
@@ -18,8 +20,10 @@ test('سحب المربعات: عدد = لاعبين + 1، بلا تكرار، �
       assert.strictEqual(tiles.length, n + 1);
       const vals = tiles.map((t) => t.value);
       assert.strictEqual(new Set(vals).size, vals.length);
-      assert.deepStrictEqual(vals, vals.slice().sort((a, b) => a - b));
       vals.forEach((v) => assert.ok(v >= 1 && v <= 6));
+      // ليست مرتّبة تصاعدياً بالضرورة (عشوائية المواضع) — نتحقق من التوزيع على عيّنة كبيرة
+      if (vals.slice().sort((a, b) => a - b).every((v, i) => v === vals[i])) sortedCount += 1;
+      totalCount += 1;
       // في الجولات العادية لا تضاعف لأي أرض
       assert.ok(tiles.every((t) => t.golden === false), 'لا ذهبي في الجولة العادية');
       // في جولة «ذهبي» تتضاعف الأرض العليا وحدها
@@ -28,6 +32,9 @@ test('سحب المربعات: عدد = لاعبين + 1، بلا تكرار، �
       gold.forEach((t) => assert.strictEqual(t.golden, t.value === max, 'الذهبي على الأعلى فقط'));
     }
   }
+  // الترتيب التصاعدي يجب أن يكون نادراً (٤ أو ٦ أراضٍ): لو تكرّر كثيراً فالسحب ليس عشوائياً
+  const sortedRatio = sortedCount / totalCount;
+  assert.ok(sortedRatio < 0.35, `نسبة الترتيب التصاعدي عالية: ${sortedRatio.toFixed(2)}`);
 });
 
 test('الحدث: الجولة الأولى عادية دائماً، ولا يتكرر حدث خاص مرتين متتاليتين', () => {

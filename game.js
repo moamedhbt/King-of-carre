@@ -16,6 +16,7 @@ const CONFIG = {
   TIMER_MS: 20000,
   CARD_PICK_MS: 15000,
   BETWEEN_MS: 3000,
+  BRIEF_MS: 14000, // شاشة القاعدة + «مستعد» قبل كل جولة
   REVEAL_TILE_MS: 1200,
   REVEAL_MAX_MS: 14000,
   REJOIN_GRACE_MS: 20000,
@@ -101,11 +102,13 @@ function pickOne(rng, arr) {
 /* ------------------------------------------------------------------ */
 
 // قيم المربعات: بلا تكرار من {1..6}، مرتّبة تصاعدياً (الأصغر أولاً = يمين الشاشة)
-// الأرض العليا تُضاعف فقط في جولة «ذهبي». في غيرها لكل أرض قيمتها كما هي.
+// قيم الأراضي عشوائية في مواضعها: خريطة حقيقية لا سلّماً تصاعدياً.
+// (الترتيب التصاعدي كان يجعل «أعلى أرض» دائماً في الطرف، فيسهل التخطيط بلا قراءة.)
+// والأرض العليا تُضاعف فقط في جولة «ذهبي».
 function drawTiles(playerCount, rng = defaultRng, event = EVENTS.NORMAL) {
   const count = playerCount + 1;
   const pool = [1, 2, 3, 4, 5, 6];
-  const values = shuffle(rng, pool).slice(0, count).sort((a, b) => a - b);
+  const values = shuffle(rng, pool).slice(0, count);
   const maxValue = Math.max(...values);
   const gold = event === EVENTS.GOLDEN;
   return values.map((value) => ({

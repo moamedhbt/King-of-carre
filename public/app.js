@@ -456,7 +456,7 @@ function handleMessage(msg) {
       break;
     }
     case 'round-start': {
-      showEventBanner(msg.event, msg.eventDesc);
+      // القاعدة تُعرض في شاشة «مستعد» كاملة، فلا لافتة تحجبها
       if (msg.bonusTo) {
         const mine = S.view?.me && msg.bonusTo === S.view.me.id;
         setTimeout(() => toast(
@@ -552,6 +552,7 @@ function render() {
   switch (v.phase) {
     case 'lobby': S.mountKey = null; renderLobby(v); break;
     case 'cards': S.mountKey = null; renderCards(v); break;
+    case 'brief': S.mountKey = null; renderBrief(v); break;
     case 'allocate': renderAllocate(v); break;
     case 'reveal': renderReveal(v); break;
     case 'between': S.mountKey = null; renderBetween(v); break;
@@ -868,6 +869,49 @@ function buildAllocate(v) {
   bindPouchDrag();
 }
 
+/* شاشة القاعدة قبل كل جولة: الخريطة + الحدث + «مستعد» */
+function renderBrief(v) {
+  const info = v.eventInfo || { id: 'عادي', desc: 'القواعد كما هي' };
+  const readyCount = v.players.filter((p) => p.ready).length;
+  const meReady = !!v.me?.ready;
+  screenEl.innerHTML = `
+    <div class="screen-inner brief-screen">
+      ${connBanner()}
+      <div class="hud">
+        <div class="avatars" id="hud-avatars">
+          ${v.players.map((p) => avatarHtml(p, { me: p.id === v.me?.id })).join('')}
+        </div>
+        ${timerHtml()}
+        ${mutedBtn()}
+      </div>
+      <div class="brief-head">
+        <span class="brief-round">الجولة ${v.round}</span>
+        <span class="brief-event ${info.id === 'ذهبي' ? 'gold' : info.id === 'مقلوب' ? 'rev' : info.id === 'وفرة' ? 'feast' : ''}">${esc(info.id)}</span>
+      </div>
+      <div class="brief-rule">${esc(info.desc)}</div>
+      <div class="map-wrap brief-map">
+        <div class="map" id="map">
+          ${v.tiles.map((t, i) => `
+            <div class="plot brief ${t.golden ? 'golden' : ''}">
+              <span class="plot-top">
+                <span class="plot-name">${esc(territoryFor(i, v.tiles.length).name)}</span>
+                <span class="plot-val num"><b>${pointsOf(t)}</b><small>نقطة</small>${t.golden ? '<i class="x2">×2</i>' : ''}</span>
+              </span>
+              <span class="plot-art">${TERR_SVG[territoryFor(i, v.tiles.length).kind](t.golden ? 1 : 0)}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="brief-wait">
+        ${v.players.map((p) => `<span class="brief-dot ${p.ready ? 'on' : ''}" title="${esc(p.name)}">${p.isBot ? 'بوت' : esc(p.name.slice(0, 1))}</span>`).join('')}
+        <span class="brief-count">${readyCount}/${v.players.length} مستعد</span>
+      </div>
+      <button class="ready-btn ${meReady ? 'on' : ''}" data-action="ready" ${meReady ? 'disabled' : ''}>
+        ${meReady ? 'بانتظار الباقين…' : 'مستعد'}
+      </button>
+    </div>`;
+  bindTargetSheet(v);
+}
+
 function renderAllocate(v) {
   const key = `alloc:${v.matchNo}:${v.round}`;
   if (S.mountKey !== key) {
@@ -1174,6 +1218,48 @@ function flyCoin(plot) {
 }
 
 /* البطاقات: تُسلَّح من اليد ثم تُوجَّه بلمسة على الأرض أو على خصم */
+/* اختيار القائد المستهدف: لوحة كبيرة بدل الشرائط الصغيرة */
+function openTargetSheet(v, cardId, tile) {
+  const prev = document.getElementById('target-root');
+  if (prev) prev.remove();
+  const others = v.players.filter((p) => p.id !== v.me.id);
+  const root = document.createElement('div');
+  root.id = 'target-root';
+  root.innerHTML = `
+    <div class="target-sheet">
+      <div class="target-title">
+        <span class="tt-ic">${cardIcon(cardId)}</span>
+        <b>${cardId === 'thief' ? 'من تسرق قوّته؟' : 'من تستهدف على هذه الأرض؟'}</b>
+      </div>
+      <div class="target-grid">
+        ${others.map((p, k) => `
+          <button class="target-card" data-target="${p.id}" style="--c:${colorOf(p)};--d:${k * 45}ms">
+            <span class="tc-shape">${p.shape || '●'}</span>
+            <span class="tc-name">${esc(p.name)}</span>
+            <span class="tc-meta">${p.score} نقطة · ${p.energy} قوة${p.locked ? ' · أرسل' : ''}</span>
+          </button>`).join('')}
+      </div>
+      <button class="target-cancel" data-cancel="1">إلغاء</button>
+    </div>`;
+  document.getElementById('overlay-root').appendChild(root);
+  requestAnimationFrame(() => root.classList.add('show'));
+  const close = () => { root.classList.remove('show'); setTimeout(() => root.remove(), 220); };
+  root.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-target]');
+    if (btn) {
+      SFX.clank();
+      vibrate(16);
+      sendActivate(cardId, tile == null ? { playerId: btn.dataset.target } : { tile, playerId: btn.dataset.target });
+      close();
+      return;
+    }
+    if (ev.target.closest('[data-cancel]') || ev.target === root) close();
+  });
+  return root;
+}
+
+function bindTargetSheet(v) { void v; }
+
 function bindAvatarTargets(v) {
   if (!S.armedCard) return;
   $$('.avatar', screenEl).forEach((el, idx) => {
@@ -1193,11 +1279,11 @@ function bindAvatarTargets(v) {
 function handlePlotTap(i, v) {
   const armed = S.armedCard;
   if (!armed) return false;
-  if (armed === 'thief') { toast('اختر خصماً من الشريط العلوي', 'err'); return true; }
+  if (armed === 'thief') { openTargetSheet(v, 'thief'); return true; }
   if (armed === 'sniper') {
     S.sniperPlot = i;
     patchAllocate(v);
-    toast('اختر الخصم المستهدف من الأعلى', 'good');
+    openTargetSheet(v, 'sniper', i);
     return true;
   }
   sendActivate(armed, { tile: i });
@@ -1586,6 +1672,12 @@ document.addEventListener('click', (ev) => {
     }
     case 'minus': break; // يُعالج بلمسة مباشرة على الأرض
     case 'pouch': break; // السحب من الكيس يُعالج بـ pointer
+    case 'ready': {
+      wsSend({ type: 'ready' });
+      vibrate(12);
+      SFX.clank();
+      break;
+    }
     case 'lock': {
       if (!v || v.phase !== 'allocate' || v.me.locked) break;
       const total = S.draft.reduce((s, x) => s + x, 0);
@@ -1606,6 +1698,7 @@ document.addEventListener('click', (ev) => {
       S.sniperPlot = null;
       SFX.click();
       patchAllocate(v);
+      if (S.armedCard === 'thief') openTargetSheet(v, 'thief');
       break;
     }
     case 'autofill': {

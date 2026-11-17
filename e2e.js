@@ -44,6 +44,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     for (let i = 0; i < 3; i += 1) await p.locator('.card-pick').nth(i).click();
     await p.click('[data-action="confirm-cards"]');
   }
+  await pages[0].waitForSelector('.ready-btn', { timeout: 20000 });
+  await sleep(400);
+  await shot('e2e-brief');
+  for (const p of pages) {
+    await p.waitForSelector('.ready-btn');
+    await p.click('.ready-btn');
+  }
   for (const p of pages) await p.waitForSelector('.plot[data-plot]');
   // توزيع: 3 عملات على أرض 0، 4 على أرض 1، 3 على أرض 2
   const splits = [[3, 4, 3, 0], [4, 3, 3, 0], [2, 4, 4, 0]];
